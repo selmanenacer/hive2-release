@@ -22,20 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import org.apache.hadoop.hive.ql.exec.CommonJoinOperator;
-import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
-import org.apache.hadoop.hive.ql.exec.FilterOperator;
-import org.apache.hadoop.hive.ql.exec.GroupByOperator;
-import org.apache.hadoop.hive.ql.exec.LateralViewForwardOperator;
-import org.apache.hadoop.hive.ql.exec.LateralViewJoinOperator;
-import org.apache.hadoop.hive.ql.exec.LimitOperator;
-import org.apache.hadoop.hive.ql.exec.MapJoinOperator;
-import org.apache.hadoop.hive.ql.exec.PTFOperator;
-import org.apache.hadoop.hive.ql.exec.ReduceSinkOperator;
-import org.apache.hadoop.hive.ql.exec.ScriptOperator;
-import org.apache.hadoop.hive.ql.exec.SelectOperator;
-import org.apache.hadoop.hive.ql.exec.TableScanOperator;
-import org.apache.hadoop.hive.ql.exec.UnionOperator;
+import org.apache.hadoop.hive.ql.exec.*;
 import org.apache.hadoop.hive.ql.lib.DefaultGraphWalker;
 import org.apache.hadoop.hive.ql.lib.DefaultRuleDispatcher;
 import org.apache.hadoop.hive.ql.lib.Dispatcher;
@@ -124,6 +111,12 @@ public class ColumnPruner extends Transform {
     opRules.put(new RuleRegExp("R13",
         UnionOperator.getOperatorName() + "%"),
         ColumnPrunerProcFactory.getUnionProc());
+    opRules.put(new RuleRegExp("R14",
+                    UnnestJoinOperator.getOperatorName() + "%"),
+            ColumnPrunerProcFactory.getUnnestJoinProc());
+    opRules.put(new RuleRegExp("R15",
+                    UnnestForwardOperator.getOperatorName() + "%"),
+            ColumnPrunerProcFactory.getUnnestForwardProc());
     // The dispatcher fires the processor corresponding to the closest matching
     // rule and passes the context along
     Dispatcher disp = new DefaultRuleDispatcher(ColumnPrunerProcFactory

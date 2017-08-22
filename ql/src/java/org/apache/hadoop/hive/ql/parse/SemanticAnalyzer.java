@@ -81,30 +81,7 @@ import org.apache.hadoop.hive.ql.Context;
 import org.apache.hadoop.hive.ql.ErrorMsg;
 import org.apache.hadoop.hive.ql.QueryProperties;
 import org.apache.hadoop.hive.ql.QueryState;
-import org.apache.hadoop.hive.ql.exec.AbstractMapJoinOperator;
-import org.apache.hadoop.hive.ql.exec.ArchiveUtils;
-import org.apache.hadoop.hive.ql.exec.ColumnInfo;
-import org.apache.hadoop.hive.ql.exec.ExprNodeEvaluatorFactory;
-import org.apache.hadoop.hive.ql.exec.FetchTask;
-import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
-import org.apache.hadoop.hive.ql.exec.FilterOperator;
-import org.apache.hadoop.hive.ql.exec.FunctionInfo;
-import org.apache.hadoop.hive.ql.exec.FunctionRegistry;
-import org.apache.hadoop.hive.ql.exec.GroupByOperator;
-import org.apache.hadoop.hive.ql.exec.JoinOperator;
-import org.apache.hadoop.hive.ql.exec.Operator;
-import org.apache.hadoop.hive.ql.exec.OperatorFactory;
-import org.apache.hadoop.hive.ql.exec.RecordReader;
-import org.apache.hadoop.hive.ql.exec.RecordWriter;
-import org.apache.hadoop.hive.ql.exec.ReduceSinkOperator;
-import org.apache.hadoop.hive.ql.exec.RowSchema;
-import org.apache.hadoop.hive.ql.exec.SMBMapJoinOperator;
-import org.apache.hadoop.hive.ql.exec.SelectOperator;
-import org.apache.hadoop.hive.ql.exec.TableScanOperator;
-import org.apache.hadoop.hive.ql.exec.Task;
-import org.apache.hadoop.hive.ql.exec.TaskFactory;
-import org.apache.hadoop.hive.ql.exec.UnionOperator;
-import org.apache.hadoop.hive.ql.exec.Utilities;
+import org.apache.hadoop.hive.ql.exec.*;
 import org.apache.hadoop.hive.ql.hooks.ReadEntity;
 import org.apache.hadoop.hive.ql.hooks.WriteEntity;
 import org.apache.hadoop.hive.ql.io.AcidOutputFormat;
@@ -159,47 +136,9 @@ import org.apache.hadoop.hive.ql.parse.WindowingSpec.WindowExpressionSpec;
 import org.apache.hadoop.hive.ql.parse.WindowingSpec.WindowFrameSpec;
 import org.apache.hadoop.hive.ql.parse.WindowingSpec.WindowFunctionSpec;
 import org.apache.hadoop.hive.ql.parse.WindowingSpec.WindowSpec;
-import org.apache.hadoop.hive.ql.plan.AggregationDesc;
-import org.apache.hadoop.hive.ql.plan.AlterTableDesc;
+import org.apache.hadoop.hive.ql.plan.*;
 import org.apache.hadoop.hive.ql.plan.AlterTableDesc.AlterTableTypes;
-import org.apache.hadoop.hive.ql.plan.CreateTableDesc;
-import org.apache.hadoop.hive.ql.plan.CreateTableLikeDesc;
-import org.apache.hadoop.hive.ql.plan.CreateViewDesc;
-import org.apache.hadoop.hive.ql.plan.DDLWork;
-import org.apache.hadoop.hive.ql.plan.DynamicPartitionCtx;
-import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
-import org.apache.hadoop.hive.ql.plan.ExprNodeColumnListDesc;
-import org.apache.hadoop.hive.ql.plan.ExprNodeConstantDesc;
-import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
-import org.apache.hadoop.hive.ql.plan.ExprNodeDescUtils;
-import org.apache.hadoop.hive.ql.plan.ExprNodeFieldDesc;
-import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
-import org.apache.hadoop.hive.ql.plan.FileSinkDesc;
-import org.apache.hadoop.hive.ql.plan.FilterDesc;
 import org.apache.hadoop.hive.ql.plan.FilterDesc.SampleDesc;
-import org.apache.hadoop.hive.ql.plan.ForwardDesc;
-import org.apache.hadoop.hive.ql.plan.GroupByDesc;
-import org.apache.hadoop.hive.ql.plan.HiveOperation;
-import org.apache.hadoop.hive.ql.plan.InsertTableDesc;
-import org.apache.hadoop.hive.ql.plan.JoinCondDesc;
-import org.apache.hadoop.hive.ql.plan.JoinDesc;
-import org.apache.hadoop.hive.ql.plan.LateralViewForwardDesc;
-import org.apache.hadoop.hive.ql.plan.LateralViewJoinDesc;
-import org.apache.hadoop.hive.ql.plan.LimitDesc;
-import org.apache.hadoop.hive.ql.plan.ListBucketingCtx;
-import org.apache.hadoop.hive.ql.plan.LoadFileDesc;
-import org.apache.hadoop.hive.ql.plan.LoadTableDesc;
-import org.apache.hadoop.hive.ql.plan.MapJoinDesc;
-import org.apache.hadoop.hive.ql.plan.OperatorDesc;
-import org.apache.hadoop.hive.ql.plan.PTFDesc;
-import org.apache.hadoop.hive.ql.plan.PlanUtils;
-import org.apache.hadoop.hive.ql.plan.ReduceSinkDesc;
-import org.apache.hadoop.hive.ql.plan.ScriptDesc;
-import org.apache.hadoop.hive.ql.plan.SelectDesc;
-import org.apache.hadoop.hive.ql.plan.TableDesc;
-import org.apache.hadoop.hive.ql.plan.TableScanDesc;
-import org.apache.hadoop.hive.ql.plan.UDTFDesc;
-import org.apache.hadoop.hive.ql.plan.UnionDesc;
 import org.apache.hadoop.hive.ql.plan.ptf.OrderExpressionDef;
 import org.apache.hadoop.hive.ql.plan.ptf.PTFExpressionDef;
 import org.apache.hadoop.hive.ql.plan.ptf.PartitionedTableFunctionDef;
@@ -274,6 +213,7 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
   private List<LoadFileDesc> loadFileWork;
   private List<ColumnStatsAutoGatherContext> columnStatsAutoGatherContexts;
   private final Map<JoinOperator, QBJoinTree> joinContext;
+  private final Map<UnnestJoinOperator, QBUnnestTree> unnestContext;
   private final Map<SMBMapJoinOperator, QBJoinTree> smbMapJoinContext;
   private final HashMap<TableScanOperator, Table> topToTable;
   private final Map<FileSinkOperator, Table> fsopToTable;
@@ -374,6 +314,7 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
     columnStatsAutoGatherContexts = new ArrayList<ColumnStatsAutoGatherContext>();
     opParseCtx = new LinkedHashMap<Operator<? extends OperatorDesc>, OpParseContext>();
     joinContext = new HashMap<JoinOperator, QBJoinTree>();
+    unnestContext = new HashMap<UnnestJoinOperator, QBUnnestTree>();
     smbMapJoinContext = new HashMap<SMBMapJoinOperator, QBJoinTree>();
     // Must be deterministic order map for consistent q-test output across Java versions
     topToTable = new LinkedHashMap<TableScanOperator, Table>();
@@ -427,6 +368,7 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
     ast = null;
     uCtx = null;
     joinContext.clear();
+    unnestContext.clear();
     smbMapJoinContext.clear();
     opParseCtx.clear();
     groupOpToInputTables.clear();
@@ -477,6 +419,7 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
     copyInfoToQueryProperties(queryProperties);
     return new ParseContext(queryState, opToPartPruner, opToPartList, topOps,
         new HashSet<JoinOperator>(joinContext.keySet()),
+            new HashSet<UnnestJoinOperator>(unnestContext.keySet()),
         new HashSet<SMBMapJoinOperator>(smbMapJoinContext.keySet()),
         loadTableWork, loadFileWork, columnStatsAutoGatherContexts, ctx, idToTableNameMap, destTableId, uCtx,
         listMapJoinOpsNoReducer, prunedPartitions, tabNameToTabObject,
@@ -1364,6 +1307,12 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
         // JOIN src2 ...
         throw new SemanticException(ErrorMsg.LATERAL_VIEW_WITH_JOIN
             .getMsg(join));
+      } else if (isUnnestToken(child)) {
+        // SELECT * FROM src1 UNNEST array AS myTable JOIN src2 ...
+        // is not supported. Instead, the lateral view must be in a subquery
+        // SELECT * FROM (SELECT * FROM src1 UNNEST array AS myTable) a JOIN src2 ...
+        throw new SemanticException(ErrorMsg.UNNEST_WITH_JOIN
+                .getMsg(join));
       } else if (isJoinToken(child)) {
         processJoin(qb, child);
       }
@@ -1397,6 +1346,9 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
     case HiveParser.TOK_SUBQUERY:
       alias = processSubQuery(qb, next);
       break;
+      case HiveParser.TOK_UNNEST:
+        alias = processUnnest(qb, next);
+        break;
     case HiveParser.TOK_LATERAL_VIEW:
     case HiveParser.TOK_LATERAL_VIEW_OUTER:
       alias = processLateralView(qb, next);
@@ -1552,6 +1504,9 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
             frm.getToken().getType() == HiveParser.TOK_LATERAL_VIEW_OUTER) {
           queryProperties.setHasLateralViews(true);
           processLateralView(qb, frm);
+        } else if (isUnnestToken(frm)) {
+          queryProperties.setHasUnnests(true);
+          processUnnest(qb, frm);
         } else if (isJoinToken(frm)) {
           processJoin(qb, frm);
           qbp.setJoinExpr(frm);
@@ -10493,9 +10448,17 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
 
     }
 
-    // For all the source tables that have a lateral view, attach the
+    // For all the source tables that have a lateral view or unnest, attach the
     // appropriate operators to the TS
     genLateralViewPlans(aliasToOpInfo, qb);
+
+    QB blankQB = new QB(null, null, false);
+    blankQB.setQBParseInfo(qb.getParseInfo());
+    Map<String, Operator> blankAliasToOpInfo = new LinkedHashMap<String, Operator>();
+    blankAliasToOpInfo.putAll(aliasToOpInfo);
+    qb.setQbUnnestTrees(genUnnestTree(blankAliasToOpInfo, blankQB));
+
+    genUnnestPlans(aliasToOpInfo, qb);
 
 
     // process join
@@ -11188,6 +11151,7 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
     copyInfoToQueryProperties(queryProperties);
     ParseContext pCtx = new ParseContext(queryState, opToPartPruner, opToPartList, topOps,
         new HashSet<JoinOperator>(joinContext.keySet()),
+            new HashSet<UnnestJoinOperator>(unnestContext.keySet()),
         new HashSet<SMBMapJoinOperator>(smbMapJoinContext.keySet()),
         loadTableWork, loadFileWork, columnStatsAutoGatherContexts, ctx, idToTableNameMap, destTableId, uCtx,
         listMapJoinOpsNoReducer, prunedPartitions, tabNameToTabObject, opToSamplePruner,
@@ -13456,6 +13420,1446 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
 
   public void setLoadFileWork(List<LoadFileDesc> loadFileWork) {
     this.loadFileWork = loadFileWork;
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////////::
+  static boolean isUnnestToken(ASTNode node) {
+    return (node.getToken().getType() == HiveParser.TOK_UNNEST
+            || node.getToken().getType() == HiveParser.TOK_LEFTOUTERUNNEST);
+  }
+
+  static private boolean isOuterUnnestToken(ASTNode node) {
+    return (node.getToken().getType() == HiveParser.TOK_LEFTOUTERUNNEST);
+  }
+
+  /**
+   * Given the AST with TOK_UNNEST as the root, get all the aliases for the arrays
+   * or subqueries in the unnest.
+   *
+   * @param qb
+   * @param unnest
+   * @throws SemanticException
+   */
+  @SuppressWarnings("nls")
+  private String processUnnest(QB qb, ASTNode unnest) throws SemanticException {
+
+    int numChildren = unnest.getChildCount();
+    assert (numChildren == 3 || numChildren == 4);
+    queryProperties.incrementUnnestCount(isOuterUnnestToken(unnest));
+
+    String alias = null;
+    ASTNode child = (ASTNode) unnest.getChild(numChildren-1);
+    switch (child.getToken().getType()) {
+      case HiveParser.TOK_TABREF:
+        alias = processTable(qb, child);
+        break;
+      case HiveParser.TOK_SUBQUERY:
+        alias = processSubQuery(qb, child);
+        break;
+      case HiveParser.TOK_LATERAL_VIEW:
+      case HiveParser.TOK_LATERAL_VIEW_OUTER:
+        alias = processLateralView(qb, child);
+        break;
+      case HiveParser.TOK_UNNEST:
+        alias = processUnnest(qb, child);
+        break;
+      default:
+        throw new SemanticException(ErrorMsg.UNNEST_INVALID_CHILD
+                .getMsg(unnest));
+    }
+    alias = alias.toLowerCase();
+    qb.getParseInfo().addUnnestForAlias(alias, unnest);
+    qb.addAlias(alias);
+    return alias;
+  }
+
+  private static boolean isValidUnnestRightSide(ASTNode right) {
+    return (right.getToken().getType() == HiveParser.DOT || right.getToken().getType() == HiveParser.TOK_TABLE_OR_COL);
+  }
+
+  private static boolean isValidUnnestLeftSide(ASTNode left) {
+    return (left.getToken().getType() == HiveParser.TOK_TABREF)
+            || (left.getToken().getType() == HiveParser.TOK_SUBQUERY)
+            || (left.getToken().getType() == HiveParser.TOK_LATERAL_VIEW)
+            || (left.getToken().getType() == HiveParser.TOK_LATERAL_VIEW_OUTER);
+  }
+
+  private String extractUnnestLeftAlias(QB qb, ASTNode left) throws SemanticException{
+    String alias = null;
+
+    switch (left.getToken().getType()) {
+      case HiveParser.TOK_TABREF:
+        alias = unescapeIdentifier(left.getChild(0).getChild(0).getText()).toLowerCase();
+        break;
+      case HiveParser.TOK_SUBQUERY:
+        alias = unescapeIdentifier(left.getChild(1).getText()).toLowerCase();
+        break;
+      case HiveParser.TOK_UNNEST:
+        alias = processUnnest(qb, left);
+        break;
+      case HiveParser.TOK_LATERAL_VIEW:
+      case HiveParser.TOK_LATERAL_VIEW_OUTER:
+        alias = processLateralView(qb, left);
+        break;
+      default:
+        break;
+    }
+
+    return alias;
+  }
+
+  private String getUnnestAlias(ASTNode unnest) {
+    ASTNode tabAlias = (ASTNode) (unnest.getChild(unnest.getChildCount()-2));
+    return unescapeIdentifier(tabAlias.getChild(0).getText().toLowerCase());
+  }
+
+  private ExprNodeDesc[][] genUnnestKeys(QBUnnestTree unnestTree, Operator[] inputs)
+          throws SemanticException {
+    ExprNodeDesc[][] unnestKeys = new ExprNodeDesc[inputs.length][];
+    for (int i = 0; i < inputs.length; i++) {
+      RowResolver inputRR = opParseCtx.get(inputs[i]).getRowResolver();
+      List<ASTNode> expressions = unnestTree.getExpressions().get(i);
+      unnestKeys[i] = new ExprNodeDesc[expressions.size()];
+      for (int j = 0; j < unnestKeys[i].length; j++) {
+        unnestKeys[i][j] = genExprNodeDesc(expressions.get(j), inputRR, true, isCBOExecuted());
+      }
+    }
+    // Type checking and implicit type conversion for unnest keys
+    return genUnnestOperatorTypeCheck(unnestKeys);
+  }
+
+  private ArrayList<ArrayList<ExprNodeDesc>> genUnnestFilters(QBUnnestTree unnestTree, Operator[] inputs)
+          throws SemanticException {
+    ArrayList<ArrayList<ExprNodeDesc>> filters =  new ArrayList<>(inputs.length);
+    ArrayList<ArrayList<ASTNode>> filtersForPushing = unnestTree.getFiltersForPushing();
+    for (int i = 0; i < inputs.length; i++) {
+      RowResolver inputRR = opParseCtx.get(inputs[i]).getRowResolver();
+      List<ASTNode> expressions = filtersForPushing.get(i);
+      ArrayList<ExprNodeDesc> exprFilters = new ArrayList<>(expressions.size());
+      for (int j = 0; j < expressions.size(); j++) {
+        exprFilters.add(genExprNodeDesc(expressions.get(j), inputRR, true, isCBOExecuted()));
+      }
+      filters.add(exprFilters);
+    }
+    return filters;
+  }
+
+  private ExprNodeDesc[][] genUnnestOperatorTypeCheck(ExprNodeDesc[][] keys)
+          throws SemanticException {
+    // keys[i] -> ArrayList<exprNodeDesc> for the i-th unnest operator key list
+    int keyLength = 0;
+    for (int i = 0; i < keys.length; i++) {
+      if (i == 0) {
+        keyLength = keys[i].length;
+      } else {
+        assert keyLength == keys[i].length;
+      }
+    }
+    // implicit type conversion hierarchy
+    for (int k = 0; k < keyLength; k++) {
+      // Find the common class for type conversion
+      TypeInfo commonType = keys[0][k].getTypeInfo();
+      for (int i = 1; i < keys.length; i++) {
+        TypeInfo a = commonType;
+        TypeInfo b = keys[i][k].getTypeInfo();
+        commonType = FunctionRegistry.getCommonClassForComparison(a, b);
+        if (commonType == null) {
+          throw new SemanticException(
+                  "Cannot do equality join on different types: " + a.getTypeName()
+                          + " and " + b.getTypeName());
+        }
+      }
+      // Add implicit type conversion if necessary
+      for (int i = 0; i < keys.length; i++) {
+        if (TypeInfoUtils.isConversionRequiredForComparison(
+                keys[i][k].getTypeInfo(), commonType)) {
+          keys[i][k] = ParseUtils.createConversionCast(
+                  keys[i][k], (PrimitiveTypeInfo)commonType);
+        } else {
+          // For the case no implicit type conversion, e.g., varchar(5) and varchar(10),
+          // pick the common type for all the keys since during run-time, same key type is assumed.
+          keys[i][k].setTypeInfo(commonType);
+        }
+      }
+    }
+    return keys;
+  }
+
+  private QBUnnestTree genUnnestJoinTree(QB qb, QBUnnestTree unnestTree, ASTNode unnestParseTree,
+                                         Map<String, Operator> aliasToOpInfo,
+                                         Map<String, QBUnnestTree> aliasToQBUnnestTrees)
+          throws SemanticException {
+
+    UnnestCond[] condn = new UnnestCond[1];
+
+    int unnestType = unnestParseTree.getToken().getType();
+    switch (unnestType) {
+      case HiveParser.TOK_LEFTOUTERUNNEST:
+        unnestTree.setNoOuterUnnest(false);
+        condn[0] = new UnnestCond(0, 1, UnnestType.LEFTOUTER);
+        break;
+      default:
+        condn[0] = new UnnestCond(0, 1, UnnestType.INNER);
+        unnestTree.setNoOuterUnnest(true);
+        break;
+    }
+    unnestTree.setUnnestCond(condn);
+
+    ASTNode unnestCond = null;
+    if(unnestParseTree.getChildCount() == 4){
+      unnestCond = (ASTNode) unnestParseTree.getChild(1);
+    }
+
+    ASTNode left = (ASTNode) unnestParseTree.getChild(unnestParseTree.getChildCount()-1);
+    ASTNode right = (ASTNode) unnestParseTree.getChild(0);
+    boolean isValidLeftToken = isValidUnnestLeftSide(left);
+    boolean isUnnestLeftToken = !isValidLeftToken && isUnnestToken(left);
+    boolean isValidRightToken = isValidUnnestRightSide(right);
+    boolean isUnnestRightToken = !isValidRightToken && isUnnestToken(right);
+    // TODO: if we didn't care about the column order, we could switch unnest sides here
+    //       for TOK_UNNEST and TOK_FULLOUTERUNNEST.
+    if (!isValidLeftToken && !isUnnestLeftToken) {
+      throw new SemanticException("Invalid token on the left side of the unnest: "
+              + left.getToken().getText() + "; please rewrite your query");
+    } else if (!isValidRightToken) {
+      String advice= "";
+      if (isUnnestRightToken && !isUnnestLeftToken) {
+        advice = "; for example, put the nested unnest on the left side, or nest unnests differently";
+      } else if (isUnnestRightToken) {
+        advice = "; for example, nest unnests differently";
+      }
+      throw new SemanticException("Invalid token on the right side of the unnest: "
+              + right.getToken().getText() + "; please rewrite your query" + advice);
+    }
+    QB clone = new QB(null, null, false);
+    String leftAlias = extractUnnestLeftAlias(clone, left);
+
+    if (isValidLeftToken) {
+      unnestTree.setLeftAlias(leftAlias);
+      String[] leftAliases = new String[1];
+      leftAliases[0] = leftAlias;
+      unnestTree.setLeftAliases(leftAliases);
+      String[] children = new String[2];
+      children[0] = leftAlias;
+      unnestTree.setBaseSrc(children);
+      unnestTree.setId(qb.getId());
+    } else if (isUnnestLeftToken) {
+      QBUnnestTree leftTree = aliasToQBUnnestTrees.get(getUnnestAlias(unnestParseTree));
+      unnestTree.setUnnestSrc(leftTree);
+      String[] leftChildAliases = leftTree.getLeftAliases();
+      String leftAliases[] = new String[leftChildAliases.length + 1];
+      for (int i = 0; i < leftChildAliases.length; i++) {
+        leftAliases[i] = leftChildAliases[i];
+      }
+      leftAliases[leftChildAliases.length] = leftTree.getRightAliases()[0];
+      unnestTree.setLeftAliases(leftAliases);
+    } else {
+      assert (false);
+    }
+
+    if (isValidRightToken) {
+      String alias = getUnnestAlias(unnestParseTree);
+      String[] rightAliases = new String[1];
+      rightAliases[0] = alias;
+      unnestTree.setRightAliases(rightAliases);
+      String[] children = unnestTree.getBaseSrc();
+      if (children == null) {
+        children = new String[2];
+      }
+      children[1] = alias;
+      unnestTree.setBaseSrc(children);
+      unnestTree.setId(qb.getId());
+    } else {
+      assert false;
+    }
+
+    ArrayList<Boolean> nullsafes = new ArrayList<Boolean>();
+    unnestTree.setNullSafes(nullsafes);
+
+    ArrayList<ArrayList<ASTNode>> filters = new ArrayList<ArrayList<ASTNode>>();
+    filters.add(new ArrayList<ASTNode>());
+    filters.add(new ArrayList<ASTNode>());
+    unnestTree.setFilters(filters);
+
+    ArrayList<ArrayList<ASTNode>> expressions = new ArrayList<ArrayList<ASTNode>>();
+    expressions.add(new ArrayList<ASTNode>());
+    expressions.add(new ArrayList<ASTNode>());
+    unnestTree.setExpressions(expressions);
+
+    ArrayList<ArrayList<ASTNode>> filtersForPushing =
+            new ArrayList<ArrayList<ASTNode>>();
+    filtersForPushing.add(new ArrayList<ASTNode>());
+    filtersForPushing.add(new ArrayList<ASTNode>());
+    unnestTree.setFiltersForPushing(filtersForPushing);
+
+    ArrayList<String> leftSrc = new ArrayList<String>();
+    parseUnnestCondition(unnestTree, unnestCond, leftSrc, aliasToOpInfo);
+    if (leftSrc.size() == 1) {
+      unnestTree.setLeftAlias(leftSrc.get(0));
+    }
+
+    return unnestTree;
+  }
+
+  @SuppressWarnings("rawtypes")
+  private void parseUnnestCondition(QBUnnestTree unnestTree, ASTNode unnestCond, List<String> leftSrc,
+                                    Map<String, Operator> aliasToOpInfo)
+          throws SemanticException {
+    if (unnestCond == null) {
+      return;
+    }
+    UnnestCond cond = unnestTree.getUnnestCond()[0];
+
+    UnnestType type = cond.getUnnestType();
+    parseUnnestCondition(unnestTree, unnestCond, leftSrc, type, aliasToOpInfo);
+  }
+
+  /**
+   * Parse the unnest condition. If the condition is a unnest condition, throw an
+   * error if it is not an equality. Otherwise, break it into left and right
+   * expressions and store in the unnest tree. If the condition is a unnest filter,
+   * add it to the filter list of unnest tree. The unnest condition can contains
+   * conditions on both the left and tree trees and filters on either.
+   * Currently, we only support equi-unnests, so we throw an error if the
+   * condition involves both subtrees and is not a equality. Also, we only
+   * support AND i.e ORs are not supported currently as their semantics are not
+   * very clear, may lead to data explosion and there is no usecase.
+   *
+   * @param unnestTree
+   *          unnesttree to be populated
+   * @param unnestCond
+   *          unnest condition
+   * @param leftSrc
+   *          left sources
+   * @throws SemanticException
+   */
+  @SuppressWarnings("rawtypes")
+  private void parseUnnestCondition(QBUnnestTree unnestTree, ASTNode unnestCond,
+                                    List<String> leftSrc, UnnestType type,
+                                    Map<String, Operator> aliasToOpInfo) throws SemanticException {
+    if (unnestCond == null) {
+      return;
+    }
+
+    switch (unnestCond.getToken().getType()) {
+      case HiveParser.KW_OR:
+        unnestTree.addPostUnnestFilter(unnestCond);
+        break;
+
+      case HiveParser.KW_AND:
+        parseUnnestCondition(unnestTree, (ASTNode) unnestCond.getChild(0), leftSrc, type, aliasToOpInfo);
+        parseUnnestCondition(unnestTree, (ASTNode) unnestCond.getChild(1), leftSrc, type, aliasToOpInfo);
+        break;
+
+      case HiveParser.EQUAL_NS:
+      case HiveParser.EQUAL:
+        ASTNode leftCondn = (ASTNode) unnestCond.getChild(0);
+        ArrayList<String> leftCondAl1 = new ArrayList<String>();
+        ArrayList<String> leftCondAl2 = new ArrayList<String>();
+        parseUnnestCondPopulateAlias(unnestTree, leftCondn, leftCondAl1, leftCondAl2,
+                null, aliasToOpInfo);
+
+        ASTNode rightCondn = (ASTNode) unnestCond.getChild(1);
+        ArrayList<String> rightCondAl1 = new ArrayList<String>();
+        ArrayList<String> rightCondAl2 = new ArrayList<String>();
+        parseUnnestCondPopulateAlias(unnestTree, rightCondn, rightCondAl1,
+                rightCondAl2, null, aliasToOpInfo);
+
+        // is it a filter or a unnest condition
+        // if it is filter see if it can be pushed above the unnest
+        // filter cannot be pushed if
+        // * unnest is full outer or
+        // * unnest is left outer and filter is on left alias or
+        // * unnest is right outer and filter is on right alias
+        if (((leftCondAl1.size() != 0) && (leftCondAl2.size() != 0))
+                || ((rightCondAl1.size() != 0) && (rightCondAl2.size() != 0))) {
+          unnestTree.addPostUnnestFilter(unnestCond);
+        } else {
+          applyEqualityPredicateToQBUnnestTree(unnestTree, type, leftSrc,
+                  unnestCond, leftCondn, rightCondn,
+                  leftCondAl1, leftCondAl2,
+                  rightCondAl1, rightCondAl2);
+        }
+        break;
+
+      default:
+        boolean isFunction = (unnestCond.getType() == HiveParser.TOK_FUNCTION);
+
+        // Create all children
+        int childrenBegin = (isFunction ? 1 : 0);
+        ArrayList<ArrayList<String>> leftAlias = new ArrayList<ArrayList<String>>(
+                unnestCond.getChildCount() - childrenBegin);
+        ArrayList<ArrayList<String>> rightAlias = new ArrayList<ArrayList<String>>(
+                unnestCond.getChildCount() - childrenBegin);
+        for (int ci = 0; ci < unnestCond.getChildCount() - childrenBegin; ci++) {
+          ArrayList<String> left = new ArrayList<String>();
+          ArrayList<String> right = new ArrayList<String>();
+          leftAlias.add(left);
+          rightAlias.add(right);
+        }
+
+        for (int ci = childrenBegin; ci < unnestCond.getChildCount(); ci++) {
+          parseUnnestCondPopulateAlias(unnestTree, (ASTNode) unnestCond.getChild(ci),
+                  leftAlias.get(ci - childrenBegin), rightAlias.get(ci
+                          - childrenBegin), null, aliasToOpInfo);
+        }
+
+        boolean leftAliasNull = true;
+        for (ArrayList<String> left : leftAlias) {
+          if (left.size() != 0) {
+            leftAliasNull = false;
+            break;
+          }
+        }
+
+        boolean rightAliasNull = true;
+        for (ArrayList<String> right : rightAlias) {
+          if (right.size() != 0) {
+            rightAliasNull = false;
+            break;
+          }
+        }
+
+        if (!leftAliasNull && !rightAliasNull) {
+          unnestTree.addPostUnnestFilter(unnestCond);
+        } else {
+          if (!leftAliasNull) {
+            if (type.equals(UnnestType.LEFTOUTER)) {
+              if (conf.getBoolVar(HiveConf.ConfVars.HIVEOUTERJOINSUPPORTSFILTERS)) {
+                unnestTree.getFilters().get(0).add(unnestCond);
+              } else {
+                LOG.warn(ErrorMsg.OUTERUNNEST_USES_FILTERS.getErrorCodedMsg());
+                unnestTree.getFiltersForPushing().get(0).add(unnestCond);
+              }
+            } else {
+              unnestTree.getFiltersForPushing().get(0).add(unnestCond);
+            }
+          } else {
+            unnestTree.getFiltersForPushing().get(1).add(unnestCond);
+          }
+        }
+
+        break;
+    }
+  }
+
+  @SuppressWarnings("nls")
+  void parseUnnestCondPopulateAlias(QBUnnestTree unnestTree, ASTNode condn,
+                                    ArrayList<String> leftAliases, ArrayList<String> rightAliases,
+                                    ArrayList<String> fields,
+                                    Map<String, Operator> aliasToOpInfo) throws SemanticException {
+    // String[] allAliases = unnestTree.getAllAliases();
+    switch (condn.getToken().getType()) {
+      case HiveParser.TOK_TABLE_OR_COL:
+        String tableOrCol = unescapeIdentifier(condn.getChild(0).getText()
+                .toLowerCase());
+        unparseTranslator.addIdentifierTranslation((ASTNode) condn.getChild(0));
+        if (isPresent(unnestTree.getLeftAliases(), tableOrCol)) {
+          if (!leftAliases.contains(tableOrCol)) {
+            leftAliases.add(tableOrCol);
+          }
+        } else if (isPresent(unnestTree.getRightAliases(), tableOrCol)) {
+          if (!rightAliases.contains(tableOrCol)) {
+            rightAliases.add(tableOrCol);
+          }
+        } else {
+          tableOrCol = findAlias(condn, aliasToOpInfo);
+          if (isPresent(unnestTree.getLeftAliases(), tableOrCol)) {
+            if (!leftAliases.contains(tableOrCol)) {
+              leftAliases.add(tableOrCol);
+            }
+          } else  {
+            if (!rightAliases.contains(tableOrCol)) {
+              rightAliases.add(tableOrCol);
+            }
+          }
+        }
+        break;
+
+      case HiveParser.Identifier:
+        // it may be a field name, return the identifier and let the caller decide
+        // whether it is or not
+        if (fields != null) {
+          fields
+                  .add(unescapeIdentifier(condn.getToken().getText().toLowerCase()));
+        }
+        unparseTranslator.addIdentifierTranslation(condn);
+        break;
+      case HiveParser.Number:
+      case HiveParser.StringLiteral:
+      case HiveParser.BigintLiteral:
+      case HiveParser.SmallintLiteral:
+      case HiveParser.TinyintLiteral:
+      case HiveParser.DecimalLiteral:
+      case HiveParser.TOK_STRINGLITERALSEQUENCE:
+      case HiveParser.TOK_CHARSETLITERAL:
+      case HiveParser.KW_TRUE:
+      case HiveParser.KW_FALSE:
+        break;
+
+      case HiveParser.TOK_FUNCTION:
+        // check all the arguments
+        for (int i = 1; i < condn.getChildCount(); i++) {
+          parseUnnestCondPopulateAlias(unnestTree, (ASTNode) condn.getChild(i),
+                  leftAliases, rightAliases, null, aliasToOpInfo);
+        }
+        break;
+
+      default:
+        // This is an operator - so check whether it is unary or binary operator
+        if (condn.getChildCount() == 1) {
+          parseUnnestCondPopulateAlias(unnestTree, (ASTNode) condn.getChild(0),
+                  leftAliases, rightAliases, null, aliasToOpInfo);
+        } else if (condn.getChildCount() == 2) {
+
+          ArrayList<String> fields1 = null;
+          parseUnnestCondPopulateAlias(unnestTree, (ASTNode) condn.getChild(0),
+                  leftAliases, rightAliases, null, aliasToOpInfo);
+          parseUnnestCondPopulateAlias(unnestTree, (ASTNode) condn.getChild(1),
+                  leftAliases, rightAliases, fields1, aliasToOpInfo);
+        } else {
+          throw new SemanticException(condn.toStringTree() + " encountered with "
+                  + condn.getChildCount() + " children");
+        }
+        break;
+    }
+  }
+
+  /*
+   * refactored out of the Equality case of parseUnnestCondition
+   * so that this can be recursively called on its left tree in the case when
+   * only left sources are referenced in a Predicate
+   */
+  void applyEqualityPredicateToQBUnnestTree(QBUnnestTree unnestTree,
+                                            UnnestType type,
+                                            List<String> leftSrc,
+                                            ASTNode unnestCond,
+                                            ASTNode leftCondn,
+                                            ASTNode rightCondn,
+                                            List<String> leftCondAl1,
+                                            List<String> leftCondAl2,
+                                            List<String> rightCondAl1,
+                                            List<String> rightCondAl2) throws SemanticException {
+    if (leftCondAl1.size() != 0) {
+      if ((rightCondAl1.size() != 0)
+              || ((rightCondAl1.size() == 0) && (rightCondAl2.size() == 0))) {
+        if (type.equals(UnnestType.LEFTOUTER)) {
+          if (conf.getBoolVar(HiveConf.ConfVars.HIVEOUTERJOINSUPPORTSFILTERS)) {
+            unnestTree.getFilters().get(0).add(unnestCond);
+          } else {
+            LOG.warn(ErrorMsg.OUTERUNNEST_USES_FILTERS.getErrorCodedMsg());
+            unnestTree.getFiltersForPushing().get(0).add(unnestCond);
+          }
+        } else {
+          /*
+           * If the rhs references table sources and this QBUnnestTree has a leftTree;
+           * hand it to the leftTree and let it recursively handle it.
+           * There are 3 cases of passing a condition down:
+           * 1. The leftSide && rightSide don't contains references to the leftTree's rightAlias
+           *    => pass the lists down as is.
+           * 2. The leftSide contains refs to the leftTree's rightAlias, the rightSide doesn't
+           *    => switch the leftCondAl1 and leftConAl2 lists and pass down.
+           * 3. The rightSide contains refs to the leftTree's rightAlias, the leftSide doesn't
+           *    => switch the rightCondAl1 and rightConAl2 lists and pass down.
+           * 4. In case both contain references to the leftTree's rightAlias
+           *   => we cannot push the condition down.
+           * 5. If either contain references to both left & right
+           *    => we cannot push forward.
+           */
+          if (rightCondAl1.size() != 0) {
+            QBUnnestTree leftTree = unnestTree.getUnnestSrc();
+            List<String> leftTreeLeftSrc = new ArrayList<String>();
+            if (leftTree != null && leftTree.getNoOuterUnnest()) {
+              String leftTreeRightSource = leftTree.getRightAliases() != null &&
+                      leftTree.getRightAliases().length > 0 ?
+                      leftTree.getRightAliases()[0] : null;
+
+              boolean leftHasRightReference = false;
+              for (String r : leftCondAl1) {
+                if (r.equals(leftTreeRightSource)) {
+                  leftHasRightReference = true;
+                  break;
+                }
+              }
+              boolean rightHasRightReference = false;
+              for (String r : rightCondAl1) {
+                if (r.equals(leftTreeRightSource)) {
+                  rightHasRightReference = true;
+                  break;
+                }
+              }
+
+              boolean pushedDown = false;
+              if ( !leftHasRightReference && !rightHasRightReference ) {
+                applyEqualityPredicateToQBUnnestTree(leftTree, type, leftTreeLeftSrc,
+                        unnestCond, leftCondn, rightCondn,
+                        leftCondAl1, leftCondAl2,
+                        rightCondAl1, rightCondAl2);
+                pushedDown = true;
+              } else if ( !leftHasRightReference && rightHasRightReference && rightCondAl1.size() == 1 ) {
+                applyEqualityPredicateToQBUnnestTree(leftTree, type, leftTreeLeftSrc,
+                        unnestCond, leftCondn, rightCondn,
+                        leftCondAl1, leftCondAl2,
+                        rightCondAl2, rightCondAl1);
+                pushedDown = true;
+              } else if (leftHasRightReference && !rightHasRightReference && leftCondAl1.size() == 1 ) {
+                applyEqualityPredicateToQBUnnestTree(leftTree, type, leftTreeLeftSrc,
+                        unnestCond, leftCondn, rightCondn,
+                        leftCondAl2, leftCondAl1,
+                        rightCondAl1, rightCondAl2);
+                pushedDown = true;
+              }
+
+              if (leftTreeLeftSrc.size() == 1) {
+                leftTree.setLeftAlias(leftTreeLeftSrc.get(0));
+              }
+              if ( pushedDown) {
+                return;
+              }
+            } // leftTree != null
+          }
+          unnestTree.getFiltersForPushing().get(0).add(unnestCond);
+        }
+      } else if (rightCondAl2.size() != 0) {
+        populateAliases(leftCondAl1, leftCondAl2, leftCondn, unnestTree,
+                leftSrc);
+        populateAliases(rightCondAl1, rightCondAl2, rightCondn, unnestTree,
+                leftSrc);
+        boolean nullsafe = unnestCond.getToken().getType() == HiveParser.EQUAL_NS;
+        unnestTree.getNullSafes().add(nullsafe);
+      }
+    } else if (leftCondAl2.size() != 0) {
+      if ((rightCondAl2.size() != 0)
+              || ((rightCondAl1.size() == 0) && (rightCondAl2.size() == 0))) {
+        unnestTree.getFiltersForPushing().get(1).add(unnestCond);
+      } else if (rightCondAl1.size() != 0) {
+        populateAliases(leftCondAl1, leftCondAl2, leftCondn, unnestTree,
+                leftSrc);
+        populateAliases(rightCondAl1, rightCondAl2, rightCondn, unnestTree,
+                leftSrc);
+        boolean nullsafe = unnestCond.getToken().getType() == HiveParser.EQUAL_NS;
+        unnestTree.getNullSafes().add(nullsafe);
+      }
+    } else if (rightCondAl1.size() != 0) {
+      if (type.equals(UnnestType.LEFTOUTER)) {
+        if (conf.getBoolVar(HiveConf.ConfVars.HIVEOUTERJOINSUPPORTSFILTERS)) {
+          unnestTree.getFilters().get(0).add(unnestCond);
+        } else {
+          LOG.warn(ErrorMsg.OUTERUNNEST_USES_FILTERS.getErrorCodedMsg());
+          unnestTree.getFiltersForPushing().get(0).add(unnestCond);
+        }
+      } else {
+        unnestTree.getFiltersForPushing().get(0).add(unnestCond);
+      }
+    } else {
+      unnestTree.getFiltersForPushing().get(1).add(unnestCond);
+    }
+
+  }
+
+  private void populateAliases(List<String> leftAliases,
+                               List<String> rightAliases, ASTNode condn, QBUnnestTree unnestTree,
+                               List<String> leftSrc) throws SemanticException {
+    if ((leftAliases.size() != 0) && (rightAliases.size() != 0)) {
+      unnestTree.addPostUnnestFilter(condn);
+      return;
+    }
+
+    if (rightAliases.size() != 0) {
+      assert rightAliases.size() == 1;
+      unnestTree.getExpressions().get(1).add(condn);
+    } else if (leftAliases.size() != 0) {
+      unnestTree.getExpressions().get(0).add(condn);
+      for (String s : leftAliases) {
+        if (!leftSrc.contains(s)) {
+          leftSrc.add(s);
+        }
+      }
+    } else {
+      unnestTree.addPostUnnestFilter(condn);
+    }
+  }
+
+  @SuppressWarnings("rawtypes")
+  private void extractUnnestCondsFromWhereClause(QBUnnestTree unnestTree, QB qb, String dest, ASTNode predicate,
+                                                 Map<String, Operator> aliasToOpInfo) throws SemanticException {
+
+    switch (predicate.getType()) {
+      case HiveParser.KW_AND:
+        extractUnnestCondsFromWhereClause(unnestTree, qb, dest,
+                (ASTNode) predicate.getChild(0), aliasToOpInfo);
+        extractUnnestCondsFromWhereClause(unnestTree, qb, dest,
+                (ASTNode) predicate.getChild(1), aliasToOpInfo);
+        break;
+      case HiveParser.EQUAL_NS:
+      case HiveParser.EQUAL:
+
+        ASTNode leftCondn = (ASTNode) predicate.getChild(0);
+        ArrayList<String> leftCondAl1 = new ArrayList<String>();
+        ArrayList<String> leftCondAl2 = new ArrayList<String>();
+        try {
+          parseUnnestCondPopulateAlias(unnestTree, leftCondn, leftCondAl1, leftCondAl2,
+                  null, aliasToOpInfo);
+        } catch(SemanticException se) {
+          // suppress here; if it is a real issue will get caught in where clause handling.
+          return;
+        }
+
+        ASTNode rightCondn = (ASTNode) predicate.getChild(1);
+        ArrayList<String> rightCondAl1 = new ArrayList<String>();
+        ArrayList<String> rightCondAl2 = new ArrayList<String>();
+        try {
+          parseUnnestCondPopulateAlias(unnestTree, rightCondn, rightCondAl1,
+                  rightCondAl2, null, aliasToOpInfo);
+        } catch(SemanticException se) {
+          // suppress here; if it is a real issue will get caught in where clause handling.
+          return;
+        }
+
+        if (((leftCondAl1.size() != 0) && (leftCondAl2.size() != 0))
+                || ((rightCondAl1.size() != 0) && (rightCondAl2.size() != 0))) {
+          // this is not a unnest condition.
+          return;
+        }
+
+        if (((leftCondAl1.size() == 0) && (leftCondAl2.size() == 0))
+                || ((rightCondAl1.size() == 0) && (rightCondAl2.size() == 0))) {
+          // this is not a unnest condition. Will get handled by predicate pushdown.
+          return;
+        }
+
+        List<String> leftSrc = new ArrayList<String>();
+        UnnestCond cond = unnestTree.getUnnestCond()[0];
+        UnnestType type = cond.getUnnestType();
+        applyEqualityPredicateToQBUnnestTree(unnestTree, type, leftSrc,
+                predicate, leftCondn, rightCondn,
+                leftCondAl1, leftCondAl2,
+                rightCondAl1, rightCondAl2);
+        if (leftSrc.size() == 1) {
+          unnestTree.setLeftAlias(leftSrc.get(0));
+        }
+
+        // todo: hold onto this predicate, so that we don't add it to the Filter Operator.
+
+        break;
+      default:
+        return;
+    }
+  }
+
+  /**
+   * generate unnest tree
+   */
+  private List<QBUnnestTree> genUnnestTree(Map<String, Operator> aliasToOpInfo, QB qb)
+          throws SemanticException {
+    LinkedHashMap<Operator<? extends OperatorDesc>, OpParseContext> opParseCtxCopie =
+            new LinkedHashMap<Operator<? extends OperatorDesc>, OpParseContext>();
+    opParseCtxCopie.putAll(opParseCtx);
+    Map<String, ArrayList<ASTNode>> aliasToUnnests = qb.getParseInfo()
+            .getAliasToUnnests();
+    for (Entry<String, Operator> e : aliasToOpInfo.entrySet()) {
+      String alias = e.getKey();
+      QBUnnestTree qbUnnestTree = null;
+      // See if the alias has a unnest. If so, chain the unnest
+      // operator on
+      ArrayList<ASTNode> unnests = aliasToUnnests.get(alias);
+      if (unnests != null) {
+        Operator op = e.getValue();
+        Map<String, QBUnnestTree> aliasToQBUnnestTrees = new HashMap<String, QBUnnestTree>();
+        for (ASTNode unnestTree : aliasToUnnests.get(alias)) {
+          // There are 2 paths from the TS operator (or a previous LVJ operator)
+          // to the same UnnestJoinOperator.
+          // TS -> SelectOperator(*) -> UnnestJoinOperator
+          // TS -> SelectOperator (gets cols for UDTF) -> UDTFOperator0
+          // -> UnnestJoinOperator
+          //
+          qbUnnestTree = new QBUnnestTree();
+          Operator unnestJoin = genUnnestTree(qb, op, unnestTree,
+                  aliasToQBUnnestTrees,
+                  qbUnnestTree,
+                  opParseCtxCopie);
+
+          ASTNode parent = (ASTNode) unnestTree.getParent();
+          if(isUnnestToken(parent)){
+            aliasToQBUnnestTrees.put(getUnnestAlias(parent), qbUnnestTree);
+          }
+
+          op = unnestJoin;
+        }
+        /*
+        * if there is only one destination in Query try to push where predicates
+        * as Unnest conditions
+        */
+        Set<String> dests = qb.getParseInfo().getClauseNames();
+        if ( dests.size() == 1 && qbUnnestTree.getNoOuterUnnest()) {
+          String dest = dests.iterator().next();
+          ASTNode whereClause = qb.getParseInfo().getWhrForClause(dest);
+          if ( whereClause != null ) {
+            extractUnnestCondsFromWhereClause(qbUnnestTree, qb, dest,
+                    (ASTNode) whereClause.getChild(0),
+                    aliasToOpInfo );
+          }
+        }
+
+        qb.getQbUnnestTrees().add(qbUnnestTree);
+        e.setValue(op);
+      }
+    }
+    opParseCtxCopie.clear();
+    return qb.getQbUnnestTrees();
+  }
+
+  private Operator genUnnestTree(QB qb, Operator op, ASTNode unnestTree,
+                                 Map<String, QBUnnestTree> aliasToQBUnnestTrees,
+                                 QBUnnestTree qbUnnestTree,
+                                 LinkedHashMap<Operator<? extends OperatorDesc>, OpParseContext> opParseCtxCopie)
+          throws SemanticException {
+    RowResolver unnestForwardRR = new RowResolver();
+    RowResolver source = opParseCtxCopie.get(op).getRowResolver();
+    Map<String, ExprNodeDesc> lvfColExprMap = new HashMap<String, ExprNodeDesc>();
+    Map<String, ExprNodeDesc> selColExprMap = new HashMap<String, ExprNodeDesc>();
+    List<ExprNodeDesc> colList = new ArrayList<ExprNodeDesc>();
+    List<String> colNames = new ArrayList<String>();
+    for (ColumnInfo col : source.getColumnInfos()) {
+      String[] tabCol = source.reverseLookup(col.getInternalName());
+      unnestForwardRR.put(tabCol[0], tabCol[1], col);
+      ExprNodeDesc colExpr = new ExprNodeColumnDesc(col);
+      colList.add(colExpr);
+      colNames.add(colExpr.getName());
+      lvfColExprMap.put(col.getInternalName(), colExpr);
+      selColExprMap.put(col.getInternalName(), colExpr.clone());
+    }
+
+    Operator unnestForward = OperatorFactory.getAndMakeChild(
+            new UnnestForwardDesc(), new RowSchema(unnestForwardRR.getColumnInfos()),
+            op);
+    opParseCtxCopie.put(unnestForward, new OpParseContext(unnestForwardRR));
+    op.setChildOperators(null);
+    unnestForward.setColumnExprMap(lvfColExprMap);
+
+    // The order in which the two paths are added is important. The
+    // unnest join operator depends on having the select operator
+    // give it the row first.
+
+    // Get the all path by making a select(*).
+    RowResolver allPathRR = opParseCtxCopie.get(unnestForward).getRowResolver();
+
+    SelectDesc sDesc = new SelectDesc(colList, colNames, false);
+    sDesc.setSelStarNoCompute(true);
+
+    Operator allPath = OperatorFactory.getAndMakeChild(
+            sDesc, new RowSchema(allPathRR.getColumnInfos()),
+            unnestForward);
+    opParseCtxCopie.put(allPath, new OpParseContext(allPathRR));
+
+    allPath.setColumnExprMap(selColExprMap);
+    int allColumns = allPathRR.getColumnInfos().size();
+
+    //get the right operator only to generate the unnest tree
+    QB blankQb = new QB(null, null, false);
+
+    Operator rightPath = genUnnestRightPath(null, (ASTNode) unnestTree, blankQb, unnestForward, opParseCtxCopie);
+
+    //get right and left source operatot of unnest
+    Map<String, Operator> aliasToUnnestOpInfo = new HashMap<String, Operator>();
+    QB clone = new QB(null, null, false);
+    String leftAlias = extractUnnestLeftAlias(clone, unnestTree);
+    String rightAlias = getUnnestAlias(unnestTree);
+    aliasToUnnestOpInfo.put(leftAlias, allPath);
+    aliasToUnnestOpInfo.put(rightAlias , rightPath);
+    genUnnestJoinTree(qb, qbUnnestTree, unnestTree, aliasToUnnestOpInfo, aliasToQBUnnestTrees);
+
+    // add udtf aliases to QB
+    for (String udtfAlias : blankQb.getAliases()) {
+      qb.addAlias(udtfAlias);
+    }
+
+    RowResolver udtfPathRR = opParseCtxCopie.get(rightPath).getRowResolver();
+
+    // Merge the two into the unnest join
+    // The cols of the merged result will be the combination of both the
+    // cols of the UDTF path and the cols of the all path. The internal
+    // names have to be changed to avoid conflicts
+    RowResolver unnestRR = new RowResolver();
+    ArrayList<String> outputInternalColNames = new ArrayList<String>();
+
+
+    // For PPD, we need a column to expression map so that during the walk,
+    // the processor knows how to transform the internal col names.
+    // Following steps are dependant on the fact that we called
+    // LVmerge.. in the above order
+    Map<String, ExprNodeDesc> colExprMap = new HashMap<String, ExprNodeDesc>();
+    LVmergeRowResolvers(allPathRR, unnestRR, colExprMap, outputInternalColNames);
+    LVmergeRowResolvers(udtfPathRR, unnestRR, colExprMap, outputInternalColNames);
+
+    //generate th unnest join operator description
+    UnnestJoinDesc unnestJoinDesc = new UnnestJoinDesc(allColumns, outputInternalColNames);
+
+    Operator unnestJoin = OperatorFactory
+            .getAndMakeChild(unnestJoinDesc,
+                    new RowSchema(unnestRR.getColumnInfos()), allPath,
+                    rightPath);
+    opParseCtxCopie.put(unnestJoin, new OpParseContext(unnestRR));
+
+
+    unnestJoin.setColumnExprMap(colExprMap);
+    return unnestJoin;
+  }
+
+  @SuppressWarnings("nls")
+  private Operator<?> genUnnestRightPath(String dest, ASTNode unnestTree, QB qb, Operator<?> input,
+                                         LinkedHashMap<Operator<? extends OperatorDesc>, OpParseContext> opParseCtxCopie)
+          throws SemanticException {
+
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("tree: " + unnestTree.toStringTree());
+    }
+
+    ArrayList<ExprNodeDesc> col_list = new ArrayList<ExprNodeDesc>();
+    RowResolver out_rwsch = new RowResolver();
+    Integer pos = Integer.valueOf(0);
+    RowResolver inputRR = opParseCtxCopie.get(input).getRowResolver();
+    RowResolver starRR = null;
+
+    // SELECT * or SELECT TRANSFORM(*)
+    boolean selectStar = false;
+    int posn = 0;
+
+    // Detect queries of the form SELECT udtf(col) AS ...
+    // by looking for a function as the first child, and then checking to see
+    // if the function is a Generic UDTF. It's not as clean as TRANSFORM due to
+    // the lack of a special token.
+
+    String udtfTableAlias = null;
+    ArrayList<String> udtfColAliases = new ArrayList<String>();
+
+    String funcName = "inline";
+    FunctionInfo fi = FunctionRegistry.getFunctionInfo(funcName);
+    GenericUDTF genericUDTF = fi.getGenericUDTF();
+    //globalLimitCtx.setHasTransformOrUDTF(true);
+
+    // Only support a single expression when it's a UDTF
+    ASTNode selExprChild = (ASTNode) unnestTree.getChild(unnestTree.getChildCount()-2);
+    assert (selExprChild.getChildCount() == 1);
+    udtfTableAlias = unescapeIdentifier(selExprChild.getChild(0)
+            .getText());
+    qb.addAlias(udtfTableAlias);
+    //unparseTranslator.addIdentifierTranslation((ASTNode) selExprChild
+    //.getChild(0));
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("UDTF table alias is " + udtfTableAlias);
+      LOG.debug("UDTF col aliases are " + udtfColAliases);
+    }
+
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("genSelectPlan: input = " + inputRR + " starRr = " + starRR);
+    }
+
+    Set<String> colAliases = new HashSet<String>();
+    ASTNode[] exprs = new ASTNode[2];
+    String[][] aliases = new String[2][];
+    boolean[] hasAsClauses = new boolean[2];
+    int offset = 0;
+    // child can be EXPR AS ALIAS, or EXPR.
+    ASTNode child = (ASTNode) unnestTree.getChild(0);
+    boolean hasAsClause = (child.getChildCount() == 2);
+
+    // The real expression
+    String tabAlias = null;
+    String colAlias = autogenColAliasPrfxLbl + 1;
+    ASTNode expr = child;
+
+    exprs[1] = expr;
+    aliases[1] = new String[] {tabAlias, colAlias};
+    hasAsClauses[1] = hasAsClause;
+    colAliases.add(colAlias);
+
+    // Case when this is an expression
+    TypeCheckCtx tcCtx = new TypeCheckCtx(inputRR, true, isCBOExecuted());
+    // We allow stateful functions in the SELECT list (but nowhere else)
+    tcCtx.setAllowStatefulFunctions(true);
+    tcCtx.setAllowDistinctFunctions(false);
+    ExprNodeDesc exp = genExprNodeDesc(expr, inputRR, tcCtx);
+    String recommended = recommendName(exp, colAlias);
+    if (recommended != null && !colAliases.contains(recommended) &&
+            out_rwsch.get(null, recommended) == null) {
+      colAlias = recommended;
+    }
+    col_list.add(exp);
+
+    ColumnInfo colInfo = new ColumnInfo(getColumnInternalName(pos),
+            exp.getWritableObjectInspector(), tabAlias, false);
+    colInfo.setSkewedCol((exp instanceof ExprNodeColumnDesc) ? ((ExprNodeColumnDesc) exp)
+            .isSkewedCol() : false);
+    out_rwsch.put(tabAlias, colAlias, colInfo);
+
+    if ( exp instanceof ExprNodeColumnDesc ) {
+      ExprNodeColumnDesc colExp = (ExprNodeColumnDesc) exp;
+      String[] altMapping = inputRR.getAlternateMappings(colExp.getColumn());
+      if ( altMapping != null ) {
+        out_rwsch.put(altMapping[0], altMapping[1], colInfo);
+      }
+    }
+
+    out_rwsch = handleInsertStatementSpec(col_list, dest, out_rwsch, inputRR, qb, unnestTree);
+
+    ArrayList<String> columnNames = new ArrayList<String>();
+    Map<String, ExprNodeDesc> colExprMap = new HashMap<String, ExprNodeDesc>();
+    for (int i = 0; i < col_list.size(); i++) {
+      String outputCol = getColumnInternalName(i);
+      colExprMap.put(outputCol, col_list.get(i));
+      columnNames.add(outputCol);
+    }
+
+    out_rwsch = unnestArrayRowResolver(out_rwsch, genericUDTF, udtfTableAlias);
+
+    Operator output = OperatorFactory.getAndMakeChild(
+            new SelectDesc(col_list, columnNames, false), new RowSchema(
+                    out_rwsch.getColumnInfos()), input);
+    opParseCtxCopie.put(output, new OpParseContext(out_rwsch));
+
+    /*Operator output = putOpInsertMap(OperatorFactory.getAndMakeChild(
+            new SelectDesc(col_list, columnNames, false), new RowSchema(
+                    out_rwsch.getColumnInfos()), input), out_rwsch);*/
+
+    output.setColumnExprMap(colExprMap);
+
+
+    //out_rwsch = unnestArrayRowResolver(out_rwsch, genericUDTF, udtfTableAlias);
+
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Created Select Plan row schema: " + out_rwsch.toString());
+    }
+    return output;
+  }
+
+  private RowResolver unnestArrayRowResolver(RowResolver input, GenericUDTF genericUDTF, String outputTableAlias) throws SemanticException{
+
+    ArrayList<String> colAliases = new ArrayList<String>();
+    // Use the RowResolver from the input to generate an input
+    // ObjectInspector that can be used to initialize the Unnest Operator. Then, the
+    // resulting output object inspector can be used to make the RowResolver
+    // for the Unnest operator
+    RowResolver arrayRR = input;
+    ArrayList<ColumnInfo> inputCols = arrayRR.getColumnInfos();
+
+    // Create the object inspector for the input columns and initialize the UDTF
+    ArrayList<String> colNames = new ArrayList<String>();
+    ObjectInspector[] colOIs = new ObjectInspector[inputCols.size()];
+    for (int i = 0; i < inputCols.size(); i++) {
+      colNames.add(inputCols.get(i).getInternalName());
+      colOIs[i] = inputCols.get(i).getObjectInspector();
+    }
+    StandardStructObjectInspector rowOI =
+            ObjectInspectorFactory.getStandardStructObjectInspector(colNames, Arrays.asList(colOIs));
+    StructObjectInspector outputOI = genericUDTF.initialize(rowOI);
+
+    int numUdtfCols = outputOI.getAllStructFieldRefs().size();
+    if (colAliases.isEmpty()) {
+      // user did not specfied alias names, infer names from outputOI
+      for (StructField field : outputOI.getAllStructFieldRefs()) {
+        colAliases.add(field.getFieldName());
+      }
+    }
+    // Make sure that the number of column aliases in the AS clause matches
+    // the number of columns output by the UDTF
+    int numSuppliedAliases = colAliases.size();
+    if (numUdtfCols != numSuppliedAliases) {
+      throw new SemanticException(ErrorMsg.UDTF_ALIAS_MISMATCH
+              .getMsg("expected " + numUdtfCols + " aliases " + "but got "
+                      + numSuppliedAliases));
+    }
+
+    // Generate the output column info's / row resolver using internal names.
+    ArrayList<ColumnInfo> udtfCols = new ArrayList<ColumnInfo>();
+
+    Iterator<String> colAliasesIter = colAliases.iterator();
+    for (StructField sf : outputOI.getAllStructFieldRefs()) {
+
+      String colAlias = colAliasesIter.next();
+      assert (colAlias != null);
+
+      // Since the UDTF operator feeds into a LVJ operator that will rename
+      // all the internal names, we can just use field name from the UDTF's OI
+      // as the internal name
+      ColumnInfo col = new ColumnInfo(sf.getFieldName(), TypeInfoUtils
+              .getTypeInfoFromObjectInspector(sf.getFieldObjectInspector()),
+              outputTableAlias, false);
+      udtfCols.add(col);
+    }
+
+    // Create the row resolver for this operator from the output columns
+    RowResolver out_rwsch = new RowResolver();
+    for (int i = 0; i < udtfCols.size(); i++) {
+      out_rwsch.put(outputTableAlias, colAliases.get(i), udtfCols.get(i));
+    }
+
+    return out_rwsch;
+  }
+
+  /**
+   * generate unnest plan
+   */
+
+
+  /**
+   * Generates the operator DAG needed to implement unnests and attaches
+   * it to the TS operator.
+   *
+   * @param aliasToOpInfo
+   *          A mapping from a table alias to the TS operator. This function
+   *          replaces the operator mapping as necessary
+   * @param qb
+   * @throws SemanticException
+   */
+  void genUnnestPlans(Map<String, Operator> aliasToOpInfo, QB qb)
+          throws SemanticException {
+    Map<String, ArrayList<ASTNode>> aliasToUnnests = qb.getParseInfo()
+            .getAliasToUnnests();
+    int i=0;
+    for (Entry<String, Operator> e : aliasToOpInfo.entrySet()) {
+      String alias = e.getKey();
+      // See if the alias has a unnest. If so, chain the unnest
+      // operator on
+      ArrayList<ASTNode> unnests = aliasToUnnests.get(alias);
+      if (unnests != null) {
+        Operator op = e.getValue();
+        List<QBUnnestTree> liste = new ArrayList<>();
+        liste = qb.getQbUnnestTrees().get(i).getQBUnnestTreeList(liste);
+        int j=0;
+        for (ASTNode unnestTree : aliasToUnnests.get(alias)) {
+          // There are 2 paths from the TS operator (or a previous LVJ operator)
+          // to the same UnnestJoinOperator.
+          // TS -> SelectOperator(*) -> UnnestJoinOperator
+          // TS -> SelectOperator (gets cols for UDTF) -> UDTFOperator0
+          // -> UnnestJoinOperator
+          //
+          Operator unnestJoin = genUnnestPlan(qb, op, unnestTree,
+                  liste.get(j));
+          this.unnestContext.put((UnnestJoinOperator) unnestJoin, liste.get(j));
+          this.getParseContext().getUnnestJoinOps().add((UnnestJoinOperator) unnestJoin);
+          //generate filters to push on dag tree
+          ArrayList<ArrayList<ASTNode>> filtersForPushing = liste.get(j).getFiltersForPushing();
+          for (int ind=0; ind<filtersForPushing.size(); ind++){
+            ArrayList<ASTNode> filter = filtersForPushing.get(ind);
+            for (ASTNode cond : filter) {
+              unnestJoin = putOpInsertMap(genFilterPlan(qb, cond, unnestJoin, false),
+                      opParseCtx.get(unnestJoin).getRowResolver());
+            }
+          }
+
+          if (liste.get(j).getPostUnnestFilters().size() != 0) {
+            // Safety check for postconditions
+            assert liste.get(j).getNoOuterUnnest();
+            for(ASTNode condn : liste.get(j).getPostUnnestFilters()) {
+              unnestJoin = genFilterPlan(qb, condn, unnestJoin, false);
+              if (LOG.isDebugEnabled()) {
+                LOG.debug("Generated " + unnestJoin + " with post-filtering conditions after Unnest operator");
+              }
+            }
+          }
+
+          op = unnestJoin;
+          j++;
+        }
+        e.setValue(op);
+      }
+      i++;
+    }
+  }
+
+
+  private Operator genUnnestPlan(QB qb, Operator op, ASTNode unnestTree,
+                                 QBUnnestTree qbUnnestTree)
+          throws SemanticException {
+    RowResolver unnestForwardRR = new RowResolver();
+    RowResolver source = opParseCtx.get(op).getRowResolver();
+    Map<String, ExprNodeDesc> lvfColExprMap = new HashMap<String, ExprNodeDesc>();
+    Map<String, ExprNodeDesc> selColExprMap = new HashMap<String, ExprNodeDesc>();
+    List<ExprNodeDesc> colList = new ArrayList<ExprNodeDesc>();
+    List<String> colNames = new ArrayList<String>();
+    for (ColumnInfo col : source.getColumnInfos()) {
+      String[] tabCol = source.reverseLookup(col.getInternalName());
+      unnestForwardRR.put(tabCol[0], tabCol[1], col);
+      ExprNodeDesc colExpr = new ExprNodeColumnDesc(col);
+      colList.add(colExpr);
+      colNames.add(colExpr.getName());
+      lvfColExprMap.put(col.getInternalName(), colExpr);
+      selColExprMap.put(col.getInternalName(), colExpr.clone());
+    }
+
+    Operator unnestForward = putOpInsertMap(OperatorFactory.getAndMakeChild(
+            new UnnestForwardDesc(), new RowSchema(unnestForwardRR.getColumnInfos()),
+            op), unnestForwardRR);
+    unnestForward.setColumnExprMap(lvfColExprMap);
+
+    // The order in which the two paths are added is important. The
+    // unnest join operator depends on having the select operator
+    // give it the row first.
+
+    // Get the all path by making a select(*).
+    RowResolver allPathRR = opParseCtx.get(unnestForward).getRowResolver();
+
+    SelectDesc sDesc = new SelectDesc(colList, colNames, false);
+    sDesc.setSelStarNoCompute(true);
+    Operator allPath = putOpInsertMap(OperatorFactory.getAndMakeChild(
+            sDesc, new RowSchema(allPathRR.getColumnInfos()),
+            unnestForward), allPathRR);
+    allPath.setColumnExprMap(selColExprMap);
+    int allColumns = allPathRR.getColumnInfos().size();
+
+    QB blankQb = new QB(null, null, false);
+
+    Operator udtfPath = genUnnestRightPlan(null, (ASTNode) unnestTree, blankQb, unnestForward,
+            isOuterUnnestToken(unnestTree));
+
+    // set QBUnnestTree AliasToOpInfo
+    String leftAlias = extractUnnestLeftAlias(new QB(null, null, false), unnestTree);
+    String rightAlias = getUnnestAlias(unnestTree);
+    qbUnnestTree.getAliasToOpInfo().put(leftAlias, allPath);
+    qbUnnestTree.getAliasToOpInfo().put(rightAlias , udtfPath);
+
+    // add udtf aliases to QB
+    for (String udtfAlias : blankQb.getAliases()) {
+      qb.addAlias(udtfAlias);
+    }
+
+    RowResolver udtfPathRR = opParseCtx.get(udtfPath).getRowResolver();
+
+    // Merge the two into the unnest join
+    // The cols of the merged result will be the combination of both the
+    // cols of the UDTF path and the cols of the all path. The internal
+    // names have to be changed to avoid conflicts
+    RowResolver unnestRR = new RowResolver();
+    ArrayList<String> outputInternalColNames = new ArrayList<String>();
+
+
+    // For PPD, we need a column to expression map so that during the walk,
+    // the processor knows how to transform the internal col names.
+    // Following steps are dependant on the fact that we called
+    // LVmerge.. in the above order
+    Map<String, ExprNodeDesc> colExprMap = new HashMap<String, ExprNodeDesc>();
+    LVmergeRowResolvers(allPathRR, unnestRR, colExprMap, outputInternalColNames);
+    LVmergeRowResolvers(udtfPathRR, unnestRR, colExprMap, outputInternalColNames);
+
+    /**
+     * Extract the filters from the unnest condition and push them on top of the
+     * source operators.
+     */
+    Operator srcs[] = new Operator[2];
+    srcs[0]= allPath;
+    srcs[1] = udtfPath;
+
+    //init filters
+    ArrayList<ArrayList<ExprNodeDesc>> filters =  genUnnestFilters(qbUnnestTree, srcs);
+
+    // check type of unnest join conditions
+    ExprNodeDesc[][] unnestKeys = genUnnestKeys(qbUnnestTree, srcs);
+
+    UnnestCondDesc[] unnestCondns = new UnnestCondDesc[qbUnnestTree.getUnnestCond().length];
+    for (int i = 0; i < qbUnnestTree.getUnnestCond().length; i++) {
+      UnnestCond condn = qbUnnestTree.getUnnestCond()[i];
+      unnestCondns[i] = new UnnestCondDesc(condn);
+    }
+
+    //generate th unnest join operator description
+    UnnestJoinDesc unnestJoinDesc = new UnnestJoinDesc(allColumns, outputInternalColNames,
+            qbUnnestTree.getNoOuterUnnest(), unnestCondns, unnestKeys, filters);
+    unnestJoinDesc.setLeftAlias(qbUnnestTree.getLeftAlias());
+    unnestJoinDesc.setLeftAliases(qbUnnestTree.getLeftAliases());
+    unnestJoinDesc.setRightAliases(qbUnnestTree.getRightAliases());
+    unnestJoinDesc.setBaseSrc(qbUnnestTree.getBaseSrc());
+    unnestJoinDesc.setId(qbUnnestTree.getId());
+    unnestJoinDesc.setAliasToOpInfo(qbUnnestTree.getAliasToOpInfo());
+
+    //generate the unnest join operator
+    Operator unnestJoin = putOpInsertMap(OperatorFactory
+            .getAndMakeChild(unnestJoinDesc,
+                    new RowSchema(unnestRR.getColumnInfos()), srcs[0],
+                    srcs[1]), unnestRR);
+
+    unnestJoin.setColumnExprMap(colExprMap);
+    return unnestJoin;
+  }
+
+  @SuppressWarnings("nls")
+  private Operator<?> genUnnestRightPlan(String dest, ASTNode unnestTree, QB qb, Operator<?> input, boolean outerLV)
+          throws SemanticException {
+
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("tree: " + unnestTree.toStringTree());
+    }
+
+    ArrayList<ExprNodeDesc> col_list = new ArrayList<ExprNodeDesc>();
+    RowResolver out_rwsch = new RowResolver();
+    Integer pos = Integer.valueOf(0);
+    RowResolver inputRR = opParseCtx.get(input).getRowResolver();
+    RowResolver starRR = null;
+
+    // Detect queries of the form SELECT udtf(col) AS ...
+    // by looking for a function as the first child, and then checking to see
+    // if the function is a Generic UDTF. It's not as clean as TRANSFORM due to
+    // the lack of a special token.
+
+    String udtfTableAlias = null;
+    ArrayList<String> udtfColAliases = new ArrayList<String>();
+
+    String funcName = "inline";
+    FunctionInfo fi = FunctionRegistry.getFunctionInfo(funcName);
+    GenericUDTF genericUDTF = fi.getGenericUDTF();
+    globalLimitCtx.setHasTransformOrUDTF(true);
+
+    // Only support a single expression when it's a UDTF
+    ASTNode selExprChild = (ASTNode) unnestTree.getChild(unnestTree.getChildCount()-2);
+    assert (selExprChild.getChildCount() == 1);
+    udtfTableAlias = unescapeIdentifier(selExprChild.getChild(0)
+            .getText());
+    qb.addAlias(udtfTableAlias);
+    unparseTranslator.addIdentifierTranslation((ASTNode) selExprChild
+            .getChild(0));
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("UDTF table alias is " + udtfTableAlias);
+      LOG.debug("UDTF col aliases are " + udtfColAliases);
+    }
+
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("genSelectPlan: input = " + inputRR + " starRr = " + starRR);
+    }
+
+    Set<String> colAliases = new HashSet<String>();
+    ASTNode[] exprs = new ASTNode[2];
+    String[][] aliases = new String[2][];
+    boolean[] hasAsClauses = new boolean[2];
+    int offset = 0;
+    // child can be EXPR AS ALIAS, or EXPR.
+    ASTNode child = (ASTNode) unnestTree.getChild(0);
+    boolean hasAsClause = (child.getChildCount() == 2);
+
+    // The real expression
+    String tabAlias = null;
+    String colAlias = autogenColAliasPrfxLbl + 1;
+    ASTNode expr = child;
+
+    exprs[1] = expr;
+    aliases[1] = new String[] {tabAlias, colAlias};
+    hasAsClauses[1] = hasAsClause;
+    colAliases.add(colAlias);
+
+    // Case when this is an expression
+    TypeCheckCtx tcCtx = new TypeCheckCtx(inputRR, true, isCBOExecuted());
+    // We allow stateful functions in the SELECT list (but nowhere else)
+    tcCtx.setAllowStatefulFunctions(true);
+    tcCtx.setAllowDistinctFunctions(false);
+    ExprNodeDesc exp = genExprNodeDesc(expr, inputRR, tcCtx);
+    String recommended = recommendName(exp, colAlias);
+    if (recommended != null && !colAliases.contains(recommended) &&
+            out_rwsch.get(null, recommended) == null) {
+      colAlias = recommended;
+    }
+    col_list.add(exp);
+
+    ColumnInfo colInfo = new ColumnInfo(getColumnInternalName(pos),
+            exp.getWritableObjectInspector(), tabAlias, false);
+    colInfo.setSkewedCol((exp instanceof ExprNodeColumnDesc) ? ((ExprNodeColumnDesc) exp)
+            .isSkewedCol() : false);
+    out_rwsch.put(tabAlias, colAlias, colInfo);
+
+    if ( exp instanceof ExprNodeColumnDesc ) {
+      ExprNodeColumnDesc colExp = (ExprNodeColumnDesc) exp;
+      String[] altMapping = inputRR.getAlternateMappings(colExp.getColumn());
+      if ( altMapping != null ) {
+        out_rwsch.put(altMapping[0], altMapping[1], colInfo);
+      }
+    }
+
+    out_rwsch = handleInsertStatementSpec(col_list, dest, out_rwsch, inputRR, qb, unnestTree);
+
+    ArrayList<String> columnNames = new ArrayList<String>();
+    Map<String, ExprNodeDesc> colExprMap = new HashMap<String, ExprNodeDesc>();
+    for (int i = 0; i < col_list.size(); i++) {
+      String outputCol = getColumnInternalName(i);
+      colExprMap.put(outputCol, col_list.get(i));
+      columnNames.add(outputCol);
+    }
+
+    Operator output = putOpInsertMap(OperatorFactory.getAndMakeChild(
+            new SelectDesc(col_list, columnNames, false), new RowSchema(
+                    out_rwsch.getColumnInfos()), input), out_rwsch);
+
+    output.setColumnExprMap(colExprMap);
+
+    output = unnestArrayRowResolver(output, genericUDTF, udtfTableAlias);
+
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Created Select Plan row schema: " + out_rwsch.toString());
+    }
+    return output;
+  }
+
+  private Operator unnestArrayRowResolver(Operator input, GenericUDTF genericUDTF, String outputTableAlias) throws SemanticException{
+
+    ArrayList<String> colAliases = new ArrayList<String>();
+    // Use the RowResolver from the input operator to generate an input
+    // ObjectInspector that can be used to initialize the Unnest Operator. Then, the
+    // resulting output object inspector can be used to make the RowResolver
+    // for the Unnest operator
+    RowResolver arrayRR = opParseCtx.get(input).getRowResolver();
+    ArrayList<ColumnInfo> inputCols = arrayRR.getColumnInfos();
+
+    // Create the object inspector for the input columns and initialize the UDTF
+    ArrayList<String> colNames = new ArrayList<String>();
+    ObjectInspector[] colOIs = new ObjectInspector[inputCols.size()];
+    for (int i = 0; i < inputCols.size(); i++) {
+      colNames.add(inputCols.get(i).getInternalName());
+      colOIs[i] = inputCols.get(i).getObjectInspector();
+    }
+    StandardStructObjectInspector rowOI =
+            ObjectInspectorFactory.getStandardStructObjectInspector(colNames, Arrays.asList(colOIs));
+    StructObjectInspector outputOI = genericUDTF.initialize(rowOI);
+
+    int numUdtfCols = outputOI.getAllStructFieldRefs().size();
+    if (colAliases.isEmpty()) {
+      // user did not specfied alias names, infer names from outputOI
+      for (StructField field : outputOI.getAllStructFieldRefs()) {
+        colAliases.add(field.getFieldName());
+      }
+    }
+    // Make sure that the number of column aliases in the AS clause matches
+    // the number of columns output by the UDTF
+    int numSuppliedAliases = colAliases.size();
+    if (numUdtfCols != numSuppliedAliases) {
+      throw new SemanticException(ErrorMsg.UDTF_ALIAS_MISMATCH
+              .getMsg("expected " + numUdtfCols + " aliases " + "but got "
+                      + numSuppliedAliases));
+    }
+
+    // Generate the output column info's / row resolver using internal names.
+    ArrayList<ColumnInfo> udtfCols = new ArrayList<ColumnInfo>();
+
+    Iterator<String> colAliasesIter = colAliases.iterator();
+    for (StructField sf : outputOI.getAllStructFieldRefs()) {
+
+      String colAlias = colAliasesIter.next();
+      assert (colAlias != null);
+
+      // Since the UDTF operator feeds into a LVJ operator that will rename
+      // all the internal names, we can just use field name from the UDTF's OI
+      // as the internal name
+      ColumnInfo col = new ColumnInfo(sf.getFieldName(), TypeInfoUtils
+              .getTypeInfoFromObjectInspector(sf.getFieldObjectInspector()),
+              outputTableAlias, false);
+      udtfCols.add(col);
+    }
+
+    // Create the row resolver for this operator from the output columns
+    RowResolver out_rwsch = new RowResolver();
+    for (int i = 0; i < udtfCols.size(); i++) {
+      out_rwsch.put(outputTableAlias, colAliases.get(i), udtfCols.get(i));
+    }
+
+    //input.setSchema(new RowSchema(out_rwsch.getColumnInfos()));
+    opParseCtx.get(input).setRowResolver(out_rwsch);
+    return input;
   }
 
 }

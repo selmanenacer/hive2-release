@@ -29,17 +29,7 @@ import java.util.Set;
 import java.util.Stack;
 
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.ql.exec.FilterOperator;
-import org.apache.hadoop.hive.ql.exec.JoinOperator;
-import org.apache.hadoop.hive.ql.exec.LateralViewJoinOperator;
-import org.apache.hadoop.hive.ql.exec.Operator;
-import org.apache.hadoop.hive.ql.exec.OperatorFactory;
-import org.apache.hadoop.hive.ql.exec.PTFOperator;
-import org.apache.hadoop.hive.ql.exec.ReduceSinkOperator;
-import org.apache.hadoop.hive.ql.exec.RowSchema;
-import org.apache.hadoop.hive.ql.exec.SelectOperator;
-import org.apache.hadoop.hive.ql.exec.TableScanOperator;
-import org.apache.hadoop.hive.ql.exec.Utilities;
+import org.apache.hadoop.hive.ql.exec.*;
 import org.apache.hadoop.hive.ql.lib.Node;
 import org.apache.hadoop.hive.ql.lib.NodeProcessor;
 import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
@@ -403,6 +393,29 @@ public final class OpProcFactory {
 
   }
 
+  public static class UnnestForwardPPD extends DefaultPPD implements NodeProcessor {
+
+    @Override
+    public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx procCtx,
+                          Object... nodeOutputs) throws SemanticException {
+      LOG.info("Processing for " + nd.getName() + "("
+              + ((Operator) nd).getIdentifier() + ")");
+      OpWalkerInfo owi = (OpWalkerInfo) procCtx;
+
+      // The lunnest forward operator has 2 children, a SELECT(*) and
+      // a SELECT(cols) (for the UDTF operator) The child at index 0 is the
+      // SELECT(*) because that's the way that the DAG was constructed. We
+      // only want to get the predicates from the SELECT(*).
+      ExprWalkerInfo childPreds = owi
+              .getPrunedPreds((Operator<? extends OperatorDesc>) nd.getChildren()
+                      .get(0));
+
+      owi.putPrunedPreds((Operator<? extends OperatorDesc>) nd, childPreds);
+      return null;
+    }
+
+  }
+
   /**
    * Combines predicates of its child into a single expression and adds a filter
    * op as new child.
@@ -593,6 +606,80 @@ public final class OpProcFactory {
     }
   }
 
+  /**
+   * Determines predicates for which alias can be pushed to it's parents. See
+   * the comments for getQualifiedAliases function.
+   */
+  public static class UnnestPPD extends DefaultPPD implements NodeProcessor {
+    @Override
+    public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx procCtx,
+                          Object... nodeOutputs) throws SemanticException {
+      LOG.info("Processing for " + nd.getName() + "("
+              + ((Operator) nd).getIdentifier() + ")");
+      OpWalkerInfo owi = (OpWalkerInfo) procCtx;
+      Set<String> aliases = getAliases(nd);
+      Set<String> leftAliases = getAliases(((Operator<? extends OperatorDesc>)nd).getParentOperators().get(0));
+      Set<String> rightAliases = getAliases(nd);
+      rightAliases.removeAll(leftAliases);
+      // we pass null for aliases here because mergeWithChildrenPred filters
+      // aliases in the children node context and we need to filter them in
+      // the current JoinOperator's context
+      mergeWithChildrenPred(nd, owi, null, null);
+      ExprWalkerInfo prunePreds =
+              owi.getPrunedPreds((Operator<? extends OperatorDesc>) nd);
+      if (prunePreds != null) {
+        Set<String> toRemove = new HashSet<String>();
+        // we don't push down any expressions that refer to aliases that can;t
+        // be pushed down per getQualifiedAliases
+        for (Entry<String, List<ExprNodeDesc>> entry : prunePreds.getFinalCandidates().entrySet()) {
+          String key = entry.getKey();
+          List<ExprNodeDesc> value = entry.getValue();
+          //the key cum from unnest right side
+          if(rightAliases.size() == 1 && rightAliases.contains(key)){
+            toRemove.add(key);
+          }
+          if (key == null && ExprNodeDescUtils.isAllConstants(value)) {
+            continue;   // propagate constants
+          }
+          if (!aliases.contains(key)) {
+            toRemove.add(key);
+          }
+        }
+        for (String alias : toRemove) {
+          for (ExprNodeDesc expr :
+                  prunePreds.getFinalCandidates().get(alias)) {
+            // add expr to the list of predicates rejected from further pushing
+            // so that we know to add it in createFilter()
+            ExprInfo exprInfo;
+            if (alias != null) {
+              exprInfo = prunePreds.addOrGetExprInfo(expr);
+              exprInfo.alias = alias;
+            } else {
+              exprInfo = prunePreds.getExprInfo(expr);
+            }
+            prunePreds.addNonFinalCandidate(exprInfo != null ? exprInfo.alias : null, expr);
+          }
+          prunePreds.getFinalCandidates().remove(alias);
+        }
+        return handlePredicates(nd, prunePreds, owi);
+      }
+      return null;
+    }
+
+    protected Set<String> getAliases(Node nd) throws SemanticException {
+      return ((Operator)nd).getSchema().getTableNames();
+    }
+
+    protected Object handlePredicates(Node nd, ExprWalkerInfo prunePreds, OpWalkerInfo owi)
+            throws SemanticException {
+      if (HiveConf.getBoolVar(owi.getParseContext().getConf(),
+              HiveConf.ConfVars.HIVEPPDREMOVEDUPLICATEFILTERS)) {
+        return createFilter((Operator)nd, prunePreds.getResidualPredicates(true), owi);
+      }
+      return null;
+    }
+  }
+
   public static class JoinPPD extends JoinerPPD {
 
     @Override
@@ -760,14 +847,15 @@ public final class OpProcFactory {
       return null;
     }
 
-    // RS for join, SEL(*) for lateral view
+    // RS for join, SEL(*) for lateral view or unnest
     // SEL for union does not count (should be copied to both sides)
     private Set<String> getQualifiedAliases(Operator<?> operator, OpWalkerInfo owi) {
       if (operator.getNumChild() != 1) {
         return null;
       }
       Operator<?> child = operator.getChildOperators().get(0);
-      if (!(child instanceof JoinOperator || child instanceof LateralViewJoinOperator)) {
+      if (!(child instanceof JoinOperator || child instanceof LateralViewJoinOperator ||
+              (child instanceof UnnestJoinOperator ))) {
         return null;
       }
       if (operator instanceof ReduceSinkOperator &&
@@ -1070,12 +1158,20 @@ public final class OpProcFactory {
     return new LateralViewForwardPPD();
   }
 
+  public static NodeProcessor getUFProc() {
+    return new UnnestForwardPPD();
+  }
+
   public static NodeProcessor getUDTFProc() {
     return new UDTFPPD();
   }
 
   public static NodeProcessor getLVJProc() {
     return new JoinerPPD();
+  }
+
+  public static NodeProcessor getUJProc() {
+    return new UnnestPPD();
   }
 
   public static NodeProcessor getRSProc() {

@@ -23,55 +23,15 @@ import java.util.Map;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
+import org.apache.hadoop.hive.ql.exec.*;
+import org.apache.hadoop.hive.ql.plan.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.apache.hadoop.hive.ql.exec.CollectOperator;
-import org.apache.hadoop.hive.ql.exec.CommonMergeJoinOperator;
-import org.apache.hadoop.hive.ql.exec.DemuxOperator;
-import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
-import org.apache.hadoop.hive.ql.exec.FilterOperator;
-import org.apache.hadoop.hive.ql.exec.ForwardOperator;
-import org.apache.hadoop.hive.ql.exec.GroupByOperator;
-import org.apache.hadoop.hive.ql.exec.HashTableSinkOperator;
-import org.apache.hadoop.hive.ql.exec.JoinOperator;
-import org.apache.hadoop.hive.ql.exec.LateralViewForwardOperator;
-import org.apache.hadoop.hive.ql.exec.LateralViewJoinOperator;
-import org.apache.hadoop.hive.ql.exec.LimitOperator;
-import org.apache.hadoop.hive.ql.exec.ListSinkOperator;
-import org.apache.hadoop.hive.ql.exec.MapJoinOperator;
-import org.apache.hadoop.hive.ql.exec.MuxOperator;
-import org.apache.hadoop.hive.ql.exec.Operator;
-import org.apache.hadoop.hive.ql.exec.PTFOperator;
-import org.apache.hadoop.hive.ql.exec.ReduceSinkOperator;
-import org.apache.hadoop.hive.ql.exec.SMBMapJoinOperator;
-import org.apache.hadoop.hive.ql.exec.ScriptOperator;
-import org.apache.hadoop.hive.ql.exec.SelectOperator;
-import org.apache.hadoop.hive.ql.exec.SparkHashTableSinkOperator;
-import org.apache.hadoop.hive.ql.exec.TableScanOperator;
-import org.apache.hadoop.hive.ql.exec.TemporaryHashSinkOperator;
-import org.apache.hadoop.hive.ql.exec.UDTFOperator;
-import org.apache.hadoop.hive.ql.exec.UnionOperator;
 import org.apache.hadoop.hive.ql.exec.vector.VectorFilterOperator;
 import org.apache.hadoop.hive.ql.exec.vector.VectorGroupByOperator;
 import org.apache.hadoop.hive.ql.exec.vector.VectorLimitOperator;
 import org.apache.hadoop.hive.ql.exec.vector.VectorSelectOperator;
 import org.apache.hadoop.hive.ql.exec.vector.VectorSparkHashTableSinkOperator;
-import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
-import org.apache.hadoop.hive.ql.plan.FileSinkDesc;
-import org.apache.hadoop.hive.ql.plan.FilterDesc;
-import org.apache.hadoop.hive.ql.plan.GroupByDesc;
-import org.apache.hadoop.hive.ql.plan.HashTableSinkDesc;
-import org.apache.hadoop.hive.ql.plan.JoinDesc;
-import org.apache.hadoop.hive.ql.plan.LateralViewJoinDesc;
-import org.apache.hadoop.hive.ql.plan.LimitDesc;
-import org.apache.hadoop.hive.ql.plan.MapJoinDesc;
-import org.apache.hadoop.hive.ql.plan.ReduceSinkDesc;
-import org.apache.hadoop.hive.ql.plan.SMBJoinDesc;
-import org.apache.hadoop.hive.ql.plan.ScriptDesc;
-import org.apache.hadoop.hive.ql.plan.SelectDesc;
-import org.apache.hadoop.hive.ql.plan.SparkHashTableSinkDesc;
-import org.apache.hadoop.hive.ql.plan.TableScanDesc;
-import org.apache.hadoop.hive.ql.plan.UDTFDesc;
 
 public class OperatorComparatorFactory {
   private static final Map<Class<?>, OperatorComparator> comparatorMapping = Maps.newHashMap();
@@ -92,6 +52,7 @@ public class OperatorComparatorFactory {
     comparatorMapping.put(VectorSparkHashTableSinkOperator.class,
         new SparkHashTableSinkOperatorComparator());
     comparatorMapping.put(LateralViewJoinOperator.class, new LateralViewJoinOperatorComparator());
+    comparatorMapping.put(UnnestJoinOperator.class, new UnnestJoinOperatorComparator());
     comparatorMapping.put(VectorGroupByOperator.class, new VectorGroupByOperatorComparator());
     comparatorMapping.put(CommonMergeJoinOperator.class, new MapJoinOperatorComparator());
     comparatorMapping.put(VectorFilterOperator.class, new FilterOperatorComparator());
@@ -104,6 +65,7 @@ public class OperatorComparatorFactory {
     comparatorMapping.put(UnionOperator.class, new AlwaysTrueOperatorComparator());
     comparatorMapping.put(ForwardOperator.class, new AlwaysTrueOperatorComparator());
     comparatorMapping.put(LateralViewForwardOperator.class, new AlwaysTrueOperatorComparator());
+    comparatorMapping.put(UnnestForwardOperator.class, new AlwaysTrueOperatorComparator());
     comparatorMapping.put(DemuxOperator.class, new AlwaysTrueOperatorComparator());
     comparatorMapping.put(MuxOperator.class, new AlwaysTrueOperatorComparator());
     comparatorMapping.put(ListSinkOperator.class, new AlwaysTrueOperatorComparator());
@@ -475,6 +437,19 @@ public class OperatorComparatorFactory {
       Preconditions.checkNotNull(op2);
       LateralViewJoinDesc desc1 = op1.getConf();
       LateralViewJoinDesc desc2 = op2.getConf();
+
+      return compareObject(desc1.getOutputInternalColNames(), desc2.getOutputInternalColNames());
+    }
+  }
+
+  static class UnnestJoinOperatorComparator implements OperatorComparator<UnnestJoinOperator> {
+
+    @Override
+    public boolean equals(UnnestJoinOperator op1, UnnestJoinOperator op2) {
+      Preconditions.checkNotNull(op1);
+      Preconditions.checkNotNull(op2);
+      UnnestJoinDesc desc1 = op1.getConf();
+      UnnestJoinDesc desc2 = op2.getConf();
 
       return compareObject(desc1.getOutputInternalColNames(), desc2.getOutputInternalColNames());
     }

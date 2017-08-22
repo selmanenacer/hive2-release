@@ -1,9 +1,9 @@
 /**
-   Licensed to the Apache Software Foundation (ASF) under one or more 
-   contributor license agreements.  See the NOTICE file distributed with 
+   Licensed to the Apache Software Foundation (ASF) under one or more
+   contributor license agreements.  See the NOTICE file distributed with
    this work for additional information regarding copyright ownership.
    The ASF licenses this file to You under the Apache License, Version 2.0
-   (the "License"); you may not use this file except in compliance with 
+   (the "License"); you may not use this file except in compliance with
    the License.  You may obtain a copy of the License at
 
        http://www.apache.org/licenses/LICENSE-2.0
@@ -47,166 +47,6 @@ catch (RecognitionException e) {
 }
 
 //-----------------------------------------------------------------------------------
-// group by a,b
-groupByClause
-@init { gParent.pushMsg("group by clause", state); }
-@after { gParent.popMsg(state); }
-    :
-    KW_GROUP KW_BY groupby_expression
-    -> groupby_expression
-    ;
-
-// support for new and old rollup/cube syntax
-groupby_expression :
- rollupStandard |
- rollupOldSyntax
-;
-
-// standard rollup syntax
-rollupStandard
-@init { gParent.pushMsg("standard rollup syntax", state); }
-@after { gParent.popMsg(state); }
-    :
-    (rollup=KW_ROLLUP | cube=KW_CUBE)
-    LPAREN expression ( COMMA expression)* RPAREN
-    -> {rollup != null}? ^(TOK_ROLLUP_GROUPBY expression+)
-    -> ^(TOK_CUBE_GROUPBY expression+)
-    ;
-
-// old hive rollup syntax
-rollupOldSyntax
-@init { gParent.pushMsg("rollup old syntax", state); }
-@after { gParent.popMsg(state); }
-    :
-    expr=expressionsNotInParenthesis[false]
-    ((rollup=KW_WITH KW_ROLLUP) | (cube=KW_WITH KW_CUBE)) ?
-    (sets=KW_GROUPING KW_SETS
-    LPAREN groupingSetExpression ( COMMA groupingSetExpression)*  RPAREN ) ?
-    -> {rollup != null}? ^(TOK_ROLLUP_GROUPBY {$expr.tree})
-    -> {cube != null}? ^(TOK_CUBE_GROUPBY {$expr.tree})
-    -> {sets != null}? ^(TOK_GROUPING_SETS {$expr.tree} groupingSetExpression+)
-    -> ^(TOK_GROUPBY {$expr.tree})
-    ;
-
-
-groupingSetExpression
-@init {gParent.pushMsg("grouping set expression", state); }
-@after {gParent.popMsg(state); }
-   :
-   (groupingSetExpressionMultiple) => groupingSetExpressionMultiple 
-   |
-   groupingExpressionSingle
-   ;
-
-groupingSetExpressionMultiple
-@init {gParent.pushMsg("grouping set part expression", state); }
-@after {gParent.popMsg(state); }
-   :
-   LPAREN 
-   expression? (COMMA expression)*
-   RPAREN
-   -> ^(TOK_GROUPING_SETS_EXPRESSION expression*)
-   ;
-
-groupingExpressionSingle
-@init { gParent.pushMsg("groupingExpression expression", state); }
-@after { gParent.popMsg(state); }
-    :
-    expression -> ^(TOK_GROUPING_SETS_EXPRESSION expression)
-    ;
-
-havingClause
-@init { gParent.pushMsg("having clause", state); }
-@after { gParent.popMsg(state); }
-    :
-    KW_HAVING havingCondition -> ^(TOK_HAVING havingCondition)
-    ;
-
-havingCondition
-@init { gParent.pushMsg("having condition", state); }
-@after { gParent.popMsg(state); }
-    :
-    expression
-    ;
-
-expressionsInParenthesis[boolean isStruct]
-    :
-    LPAREN! expressionsNotInParenthesis[isStruct] RPAREN!
-    ;
-
-expressionsNotInParenthesis[boolean isStruct]
-    :
-    first=expression more=expressionPart[$expression.tree, isStruct]?
-    -> {more==null}?
-       {$first.tree}
-    -> {$more.tree}
-    ;
-
-expressionPart[CommonTree t, boolean isStruct]
-    :
-    (COMMA expression)+
-    -> {isStruct}? ^(TOK_FUNCTION Identifier["struct"] {$t} expression+)
-    -> {$t} expression+
-    ;
-
-expressions
-    :
-    (expressionsInParenthesis[false]) => expressionsInParenthesis[false]
-    |
-    expressionsNotInParenthesis[false]
-    ;
-
-columnRefOrderInParenthesis
-    :
-    LPAREN columnRefOrder (COMMA columnRefOrder)* RPAREN -> columnRefOrder+
-    ;
-
-columnRefOrderNotInParenthesis
-    :
-    columnRefOrder (COMMA columnRefOrder)* -> columnRefOrder+
-    ;
-    
-// order by a,b
-orderByClause
-@init { gParent.pushMsg("order by clause", state); }
-@after { gParent.popMsg(state); }
-    :
-    KW_ORDER KW_BY columnRefOrder ( COMMA columnRefOrder)* -> ^(TOK_ORDERBY columnRefOrder+)
-    ;
-    
-clusterByClause
-@init { gParent.pushMsg("cluster by clause", state); }
-@after { gParent.popMsg(state); }
-    :
-    KW_CLUSTER KW_BY expressions -> ^(TOK_CLUSTERBY expressions)
-    ;
-
-partitionByClause
-@init  { gParent.pushMsg("partition by clause", state); }
-@after { gParent.popMsg(state); }
-    :
-    KW_PARTITION KW_BY expressions -> ^(TOK_DISTRIBUTEBY expressions) 
-    ;
-
-distributeByClause
-@init { gParent.pushMsg("distribute by clause", state); }
-@after { gParent.popMsg(state); }
-    :
-    KW_DISTRIBUTE KW_BY expressions -> ^(TOK_DISTRIBUTEBY expressions) 
-    ;
-
-sortByClause
-@init { gParent.pushMsg("sort by clause", state); }
-@after { gParent.popMsg(state); }
-    :
-    KW_SORT KW_BY
-    (
-    (LPAREN) => columnRefOrderInParenthesis -> ^(TOK_SORTBY columnRefOrderInParenthesis)
-    |
-    columnRefOrderNotInParenthesis -> ^(TOK_SORTBY columnRefOrderNotInParenthesis)
-    )
-    ;
-
 // fun(par1, par2, par3)
 function
 @init { gParent.pushMsg("function specification", state); }
@@ -229,7 +69,7 @@ functionName
 @after { gParent.popMsg(state); }
     : // Keyword IF is also a function name
     KW_IF | KW_ARRAY | KW_MAP
-    | 
+    |
     functionIdentifier
     |
     {!useSQL11ReservedKeywordsForIdentifier()}? sql11ReservedKeywordsUsedAsCastFunctionName -> Identifier[$sql11ReservedKeywordsUsedAsCastFunctionName.start]
@@ -317,7 +157,7 @@ timeQualifiers
 constant
 @init { gParent.pushMsg("constant", state); }
 @after { gParent.popMsg(state); }
-    : 
+    :
     (intervalLiteral) => intervalLiteral
     | Number
     | dateLiteral
@@ -366,7 +206,7 @@ timestampLiteral
     |
     KW_CURRENT_TIMESTAMP -> ^(TOK_FUNCTION KW_CURRENT_TIMESTAMP)
     ;
-    
+
 intervalValue
     :
     StringLiteral | Number
@@ -541,7 +381,7 @@ precedenceSimilarExpression
     :
     precedenceSimilarExpressionMain
     |
-    KW_EXISTS subQueryExpression -> ^(TOK_SUBQUERY_EXPR ^(TOK_SUBQUERY_OP KW_EXISTS) subQueryExpression)    
+    KW_EXISTS subQueryExpression -> ^(TOK_SUBQUERY_EXPR ^(TOK_SUBQUERY_OP KW_EXISTS) subQueryExpression)
     ;
 
 precedenceSimilarExpressionMain
@@ -550,7 +390,7 @@ precedenceSimilarExpressionMain
     -> {part == null}? {$a.tree}
     -> {$part.tree}
     ;
-    
+
 precedenceSimilarExpressionPart[CommonTree t]
     :
     (precedenceSimilarOperator equalExpr=precedenceBitwiseOrExpression)
@@ -594,7 +434,7 @@ precedenceEqualExpression
     :
     precedenceSimilarExpression (precedenceEqualOperator^ precedenceSimilarExpression)*
     ;
-    
+
 precedenceNotOperator
     :
     KW_NOT
@@ -728,7 +568,7 @@ identifier
     :
     Identifier
     | nonReserved -> Identifier[$nonReserved.start]
-    // If it decides to support SQL11 reserved keywords, i.e., useSQL11ReservedKeywordsForIdentifier()=false, 
+    // If it decides to support SQL11 reserved keywords, i.e., useSQL11ReservedKeywordsForIdentifier()=false,
     // the sql11keywords in existing q tests will NOT be added back.
     | {useSQL11ReservedKeywordsForIdentifier()}? sql11ReservedKeywordsUsedAsIdentifier -> Identifier[$sql11ReservedKeywordsUsedAsIdentifier.start]
     ;
@@ -761,8 +601,8 @@ nonReserved
     KW_ABORT | KW_ADD | KW_ADMIN | KW_AFTER | KW_ANALYZE | KW_ARCHIVE | KW_ASC | KW_BEFORE | KW_BUCKET | KW_BUCKETS
     | KW_CASCADE | KW_CHANGE | KW_CLUSTER | KW_CLUSTERED | KW_CLUSTERSTATUS | KW_COLLECTION | KW_COLUMNS
     | KW_COMMENT | KW_COMPACT | KW_COMPACTIONS | KW_COMPUTE | KW_CONCATENATE | KW_CONTINUE | KW_DATA | KW_DAY
-    | KW_DATABASES | KW_DATETIME | KW_DBPROPERTIES | KW_DEFERRED | KW_DEFINED | KW_DELIMITED | KW_DEPENDENCY 
-    | KW_DESC | KW_DIRECTORIES | KW_DIRECTORY | KW_DISABLE | KW_DISTRIBUTE | KW_DOW | KW_ELEM_TYPE 
+    | KW_DATABASES | KW_DATETIME | KW_DBPROPERTIES | KW_DEFERRED | KW_DEFINED | KW_DELIMITED | KW_DEPENDENCY
+    | KW_DESC | KW_DIRECTORIES | KW_DIRECTORY | KW_DISABLE | KW_DISTRIBUTE | KW_DOW | KW_ELEM_TYPE
     | KW_ENABLE | KW_ESCAPED | KW_EXCLUSIVE | KW_EXPLAIN | KW_EXPORT | KW_FIELDS | KW_FILE | KW_FILEFORMAT
     | KW_FIRST | KW_FORMAT | KW_FORMATTED | KW_FUNCTIONS | KW_HOLD_DDLTIME | KW_HOUR | KW_IDXPROPERTIES | KW_IGNORE
     | KW_INDEX | KW_INDEXES | KW_INPATH | KW_INPUTDRIVER | KW_INPUTFORMAT | KW_ITEMS | KW_JAR
@@ -804,16 +644,16 @@ sql11ReservedKeywordsUsedAsCastFunctionName
 //Thus, please do not change the following list unless you know what to do.
 sql11ReservedKeywordsUsedAsIdentifier
     :
-    KW_ALL | KW_ALTER | KW_ARRAY | KW_AS | KW_AUTHORIZATION | KW_BETWEEN | KW_BIGINT | KW_BINARY | KW_BOOLEAN 
-    | KW_BOTH | KW_BY | KW_CREATE | KW_CUBE | KW_CURRENT_DATE | KW_CURRENT_TIMESTAMP | KW_CURSOR | KW_DATE | KW_DECIMAL | KW_DELETE | KW_DESCRIBE 
-    | KW_DOUBLE | KW_DROP | KW_EXISTS | KW_EXTERNAL | KW_FALSE | KW_FETCH | KW_FLOAT | KW_FOR | KW_FULL | KW_GRANT 
-    | KW_GROUP | KW_GROUPING | KW_IMPORT | KW_IN | KW_INNER | KW_INSERT | KW_INT | KW_INTERSECT | KW_INTO | KW_IS | KW_LATERAL 
-    | KW_LEFT | KW_LIKE | KW_LOCAL | KW_NONE | KW_NULL | KW_OF | KW_ORDER | KW_OUT | KW_OUTER | KW_PARTITION 
-    | KW_PERCENT | KW_PROCEDURE | KW_RANGE | KW_READS | KW_REVOKE | KW_RIGHT 
-    | KW_ROLLUP | KW_ROW | KW_ROWS | KW_SET | KW_SMALLINT | KW_TABLE | KW_TIMESTAMP | KW_TO | KW_TRIGGER | KW_TRUE 
-    | KW_TRUNCATE | KW_UNION | KW_UPDATE | KW_USER | KW_USING | KW_VALUES | KW_WITH 
-//The following two keywords come from MySQL. Although they are not keywords in SQL2011, they are reserved keywords in MySQL.    
-    | KW_REGEXP | KW_RLIKE 
+    KW_ALL | KW_ALTER | KW_ARRAY | KW_AS | KW_AUTHORIZATION | KW_BETWEEN | KW_BIGINT | KW_BINARY | KW_BOOLEAN
+    | KW_BOTH | KW_BY | KW_CREATE | KW_CUBE | KW_CURRENT_DATE | KW_CURRENT_TIMESTAMP | KW_CURSOR | KW_DATE | KW_DECIMAL | KW_DELETE | KW_DESCRIBE
+    | KW_DOUBLE | KW_DROP | KW_EXISTS | KW_EXTERNAL | KW_FALSE | KW_FETCH | KW_FLOAT | KW_FOR | KW_FULL | KW_GRANT
+    | KW_GROUP | KW_GROUPING | KW_IMPORT | KW_IN | KW_INNER | KW_INSERT | KW_INT | KW_INTERSECT | KW_INTO | KW_IS | KW_LATERAL | KW_UNNEST
+    | KW_LEFT | KW_LIKE | KW_LOCAL | KW_NONE | KW_NULL | KW_OF | KW_ORDER | KW_OUT | KW_OUTER | KW_PARTITION
+    | KW_PERCENT | KW_PROCEDURE | KW_RANGE | KW_READS | KW_REVOKE | KW_RIGHT
+    | KW_ROLLUP | KW_ROW | KW_ROWS | KW_SET | KW_SMALLINT | KW_TABLE | KW_TIMESTAMP | KW_TO | KW_TRIGGER | KW_TRUE
+    | KW_TRUNCATE | KW_UNION | KW_UPDATE | KW_USER | KW_USING | KW_VALUES | KW_WITH
+//The following two keywords come from MySQL. Although they are not keywords in SQL2011, they are reserved keywords in MySQL.
+    | KW_REGEXP | KW_RLIKE
     | KW_PRIMARY
     | KW_FOREIGN
     | KW_CONSTRAINT

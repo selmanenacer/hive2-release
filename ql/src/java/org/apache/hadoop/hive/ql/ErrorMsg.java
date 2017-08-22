@@ -159,6 +159,8 @@ public enum ErrorMsg {
   UDF_STATEFUL_INVALID_LOCATION(10084, "Stateful UDF's can only be invoked in the SELECT list"),
   LATERAL_VIEW_WITH_JOIN(10085, "JOIN with a LATERAL VIEW is not supported"),
   LATERAL_VIEW_INVALID_CHILD(10086, "LATERAL VIEW AST with invalid child"),
+  UNNEST_WITH_JOIN(10085, "JOIN with a UNNEST is not supported"),
+  UNNEST_INVALID_CHILD(10086, "UNNEST AST with invalid child"),
   OUTPUT_SPECIFIED_MULTIPLE_TIMES(10087, "The same output cannot be present multiple times: "),
   INVALID_AS(10088, "AS clause has an invalid number of aliases"),
   VIEW_COL_MISMATCH(10089, "The number of columns produced by the SELECT clause does not match the "
@@ -195,6 +197,8 @@ public enum ErrorMsg {
   OFFLINE_TABLE_OR_PARTITION(10113, "Query against an offline table or partition"),
   OUTERJOIN_USES_FILTERS(10114, "The query results could be wrong. " +
                          "Turn on hive.outerjoin.supports.filters"),
+  OUTERUNNEST_USES_FILTERS(10114, "The query results could be wrong. " +
+          "Turn on hive.outerjoin.supports.filters"),
   NEED_PARTITION_SPECIFICATION(10115, "Table is partitioned and partition specification is needed"),
   INVALID_METADATA(10116, "The metadata file could not be parsed "),
   NEED_TABLE_SPECIFICATION(10117, "Table name could be determined; It should be specified "),

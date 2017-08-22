@@ -68,6 +68,7 @@ public class ParseContext {
   private Map<TableScanOperator, Map<String, ExprNodeDesc>> opToPartToSkewedPruner;
   private HashMap<String, TableScanOperator> topOps;
   private Set<JoinOperator> joinOps;
+  private Set<UnnestJoinOperator> unnestJoinOps;
   private Set<MapJoinOperator> mapJoinOps;
   private Set<SMBMapJoinOperator> smbMapJoinOps;
   private List<ReduceSinkOperator> reduceSinkOperatorsAddedByEnforceBucketingSorting;
@@ -109,7 +110,7 @@ public class ParseContext {
   private CreateTableDesc createTableDesc;
   private boolean reduceSinkAddedBySortedDynPartition;
 
-  private Map<SelectOperator, Table> viewProjectToViewSchema;  
+  private Map<SelectOperator, Table> viewProjectToViewSchema;
   private ColumnAccessInfo columnAccessInfo;
   private boolean needViewColumnAuthorization;
   private Set<FileSinkDesc> acidFileSinks = Collections.emptySet();
@@ -143,6 +144,8 @@ public class ParseContext {
    *          operator parse state (row resolver etc.)
    * @param joinOps
    *          context needed join processing (map join specifically)
+   * @param unnestJoinOps
+   *          context needed unnest processing (map unnest specifically)
    * @param loadTableWork
    *          list of destination tables being loaded
    * @param loadFileWork
@@ -168,6 +171,7 @@ public class ParseContext {
       HashMap<TableScanOperator, PrunedPartitionList> opToPartList,
       HashMap<String, TableScanOperator> topOps,
       Set<JoinOperator> joinOps,
+      Set<UnnestJoinOperator> unnestJoinOps,
       Set<SMBMapJoinOperator> smbMapJoinOps,
       List<LoadTableDesc> loadTableWork, List<LoadFileDesc> loadFileWork,
       List<ColumnStatsAutoGatherContext> columnStatsAutoGatherContexts,
@@ -190,6 +194,7 @@ public class ParseContext {
     this.opToPartPruner = opToPartPruner;
     this.opToPartList = opToPartList;
     this.joinOps = joinOps;
+    this.unnestJoinOps = unnestJoinOps;
     this.smbMapJoinOps = smbMapJoinOps;
     this.loadFileWork = loadFileWork;
     this.loadTableWork = loadTableWork;
@@ -391,6 +396,23 @@ public class ParseContext {
   public void setJoinOps(Set<JoinOperator> joinOps) {
     this.joinOps = joinOps;
   }
+
+  /**
+   * @return the unnestJoinOps
+   */
+  public Set<UnnestJoinOperator> getUnnestJoinOps() {
+    return unnestJoinOps;
+  }
+
+  /**
+   * @param unnestJoinOps
+   *          the unnestJoinOps to set
+   */
+  public void setUnnestJoinOps(Set<UnnestJoinOperator> unnestJoinOps) {
+    this.unnestJoinOps = unnestJoinOps;
+  }
+
+
 
   /**
    * @return the listMapJoinOpsNoReducer

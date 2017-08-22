@@ -765,4 +765,12 @@ public class BucketingSortingOpProcFactory {
   public static NodeProcessor getMultiGroupByProc() {
     return new MultiGroupByInferrer();
   }
+
+  public static NodeProcessor getUnnestForwardProc() {
+    return new ForwardingInferrer();
+  }
+
+  public static NodeProcessor getUnnestJoinProc() {
+    return new ForwardingInferrer();
+  }
 }

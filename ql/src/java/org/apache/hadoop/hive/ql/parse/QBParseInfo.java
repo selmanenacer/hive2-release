@@ -43,6 +43,7 @@ public class QBParseInfo {
   private boolean isSubQ;
   private String alias;
   private ASTNode joinExpr;
+  //private ASTNode unnestExpr;
   private ASTNode hints;
   private List<ASTNode> hintList;
   private final HashMap<String, ASTNode> aliasToSrc;
@@ -102,6 +103,13 @@ public class QBParseInfo {
 
   private final HashMap<String, ASTNode> destToLateralView;
 
+  /**
+   * Maping from table/subquery aliases to all the associated unnest nodes.
+   */
+  private final HashMap<String, ArrayList<ASTNode>> aliasToUnnests;
+
+  private final HashMap<String, ASTNode> destToUnnest;
+
   /* Order by clause */
   private final HashMap<String, ASTNode> destToOrderby;
   // Use SimpleEntry to save the offset and rowcount of limit clause
@@ -128,6 +136,7 @@ public class QBParseInfo {
     nameToSample = new HashMap<String, TableSample>();
     exprToColumnAlias = new HashMap<ASTNode, String>();
     destToLateralView = new HashMap<String, ASTNode>();
+    destToUnnest = new HashMap<String, ASTNode>();
     destToSelExpr = new LinkedHashMap<String, ASTNode>();
     destToWhereExpr = new HashMap<String, ASTNode>();
     destToGroupby = new HashMap<String, ASTNode>();
@@ -152,6 +161,7 @@ public class QBParseInfo {
     outerQueryLimit = -1;
 
     aliasToLateralViews = new HashMap<String, ArrayList<ASTNode>>();
+    aliasToUnnests = new HashMap<String, ArrayList<ASTNode>>();
 
     tableSpecs = new HashMap<String, BaseSemanticAnalyzer.TableSpec>();
 
@@ -582,6 +592,23 @@ public class QBParseInfo {
     lateralViews.add(lateralView);
   }
 
+  public Map<String, ArrayList<ASTNode>> getAliasToUnnests() {
+    return aliasToUnnests;
+  }
+
+  public List<ASTNode> getUnnestsForAlias(String alias) {
+    return aliasToUnnests.get(alias.toLowerCase());
+  }
+
+  public void addUnnestForAlias(String alias, ASTNode unnest) {
+    ArrayList<ASTNode> unnests = aliasToUnnests.get(alias);
+    if (unnests == null) {
+      unnests = new ArrayList<ASTNode>();
+      aliasToUnnests.put(alias, unnests);
+    }
+    unnests.add(unnest);
+  }
+
   public void setIsAnalyzeCommand(boolean isAnalyzeCommand) {
     this.isAnalyzeCommand = isAnalyzeCommand;
   }
@@ -625,6 +652,10 @@ public class QBParseInfo {
 
   public HashMap<String, ASTNode> getDestToLateralView() {
     return destToLateralView;
+  }
+
+  public HashMap<String, ASTNode> getDestToUnnest() {
+    return destToUnnest;
   }
 
   protected static enum ClauseType {

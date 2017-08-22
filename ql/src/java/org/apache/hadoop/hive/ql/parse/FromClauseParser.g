@@ -102,11 +102,11 @@ atomjoinSource
 @init { gParent.pushMsg("joinSource", state); }
 @after { gParent.popMsg(state); }
     :
-    tableSource (lateralView^)*
+    tableSource (lateralViewOrUnnest^)*
     |
-    (subQuerySource) => subQuerySource (lateralView^)*
+    (subQuerySource) => subQuerySource (lateralViewOrUnnest^)*
     |
-    partitionedTableFunction (lateralView^)*
+    partitionedTableFunction (lateralViewOrUnnest^)*
     |
     LPAREN! joinSource RPAREN!
     ;
@@ -121,7 +121,7 @@ joinSourcePart
 @init { gParent.pushMsg("joinSourcePart", state); }
 @after { gParent.popMsg(state); }
     :
-    (tableSource | subQuerySource | partitionedTableFunction) (lateralView^)*
+    (tableSource | subQuerySource | partitionedTableFunction) (lateralViewOrUnnest^)*
     ;
 
 uniqueJoinSource
@@ -155,6 +155,13 @@ joinToken
     | KW_LEFT KW_SEMI KW_JOIN      -> TOK_LEFTSEMIJOIN
     ;
 
+lateralViewOrUnnest
+@init { gParent.pushMsg("lateralView Or Unnest source", state); }
+@after { gParent.popMsg(state); }
+    :
+    lateralView | unnest
+    ;
+
 lateralView
 @init {gParent.pushMsg("lateral view", state); }
 @after {gParent.popMsg(state); }
@@ -165,6 +172,30 @@ lateralView
 	KW_LATERAL KW_VIEW function tableAlias (KW_AS identifier ((COMMA)=> COMMA identifier)*)?
 	-> ^(TOK_LATERAL_VIEW ^(TOK_SELECT ^(TOK_SELEXPR function identifier* tableAlias)))
 	;
+
+unnest
+@init { gParent.pushMsg("unnest", state); }
+@after { gParent.popMsg(state); }
+    :
+    unnestToken^ arraySource (KW_ON! expression)? (KW_AS!)? tableAlias
+    ;
+
+arraySource
+@init { gParent.pushMsg("array identifier", state); }
+@after { gParent.popMsg(state); }
+    :
+      identifier -> ^(TOK_TABLE_OR_COL identifier)
+    | tab=identifier DOT col=identifier -> ^(DOT ^(TOK_TABLE_OR_COL $tab) $col)
+    ;
+
+unnestToken
+@init { gParent.pushMsg("unnest type specifier", state); }
+@after { gParent.popMsg(state); }
+    :
+      KW_UNNEST                      -> TOK_UNNEST
+    | KW_INNER KW_UNNEST             -> TOK_UNNEST
+    | KW_LEFT  (KW_OUTER)? KW_UNNEST -> TOK_LEFTOUTERUNNEST
+    ;
 
 tableAlias
 @init {gParent.pushMsg("table alias", state); }

@@ -37,7 +37,9 @@ public enum OperatorType implements org.apache.thrift.TEnum {
   ORCFILEMERGE(22),
   RCFILEMERGE(23),
   MERGEJOIN(24),
-  SPARKPRUNINGSINK(25);
+  SPARKPRUNINGSINK(25),
+  UNNESTFORWARD(26),
+  UNNESTJOIN(27);
 
   private final int value;
 
@@ -56,7 +58,7 @@ public enum OperatorType implements org.apache.thrift.TEnum {
    * Find a the enum type by its integer value, as defined in the Thrift IDL.
    * @return null if the value is not found.
    */
-  public static OperatorType findByValue(int value) { 
+  public static OperatorType findByValue(int value) {
     switch (value) {
       case 0:
         return JOIN;
@@ -110,6 +112,10 @@ public enum OperatorType implements org.apache.thrift.TEnum {
         return MERGEJOIN;
       case 25:
         return SPARKPRUNINGSINK;
+      case 26:
+        return UNNESTFORWARD;
+      case 27:
+        return UNNESTJOIN;
       default:
         return null;
     }

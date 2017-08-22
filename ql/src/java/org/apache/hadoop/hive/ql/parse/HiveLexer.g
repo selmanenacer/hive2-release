@@ -72,6 +72,7 @@ KW_OUTER : 'OUTER';
 KW_UNIQUEJOIN : 'UNIQUEJOIN';
 KW_PRESERVE : 'PRESERVE';
 KW_JOIN : 'JOIN';
+KW_UNNEST : 'UNNEST';
 KW_LEFT : 'LEFT';
 KW_RIGHT : 'RIGHT';
 KW_FULL : 'FULL';
@@ -460,6 +461,7 @@ An Identifier can be:
 - columnName
 - select expr alias
 - lateral view aliases
+- unnest aliases
 - database name
 - view name
 - subquery alias

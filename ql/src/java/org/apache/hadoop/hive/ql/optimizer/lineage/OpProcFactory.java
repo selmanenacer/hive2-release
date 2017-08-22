@@ -29,21 +29,7 @@ import java.util.Stack;
 
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.Table;
-import org.apache.hadoop.hive.ql.exec.ColumnInfo;
-import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
-import org.apache.hadoop.hive.ql.exec.FilterOperator;
-import org.apache.hadoop.hive.ql.exec.ForwardOperator;
-import org.apache.hadoop.hive.ql.exec.GroupByOperator;
-import org.apache.hadoop.hive.ql.exec.JoinOperator;
-import org.apache.hadoop.hive.ql.exec.LateralViewJoinOperator;
-import org.apache.hadoop.hive.ql.exec.LimitOperator;
-import org.apache.hadoop.hive.ql.exec.Operator;
-import org.apache.hadoop.hive.ql.exec.ReduceSinkOperator;
-import org.apache.hadoop.hive.ql.exec.RowSchema;
-import org.apache.hadoop.hive.ql.exec.ScriptOperator;
-import org.apache.hadoop.hive.ql.exec.SelectOperator;
-import org.apache.hadoop.hive.ql.exec.TableScanOperator;
-import org.apache.hadoop.hive.ql.exec.Utilities;
+import org.apache.hadoop.hive.ql.exec.*;
 import org.apache.hadoop.hive.ql.hooks.LineageInfo;
 import org.apache.hadoop.hive.ql.hooks.LineageInfo.BaseColumnInfo;
 import org.apache.hadoop.hive.ql.hooks.LineageInfo.Dependency;
@@ -337,6 +323,51 @@ public class OpProcFactory {
           ColumnInfo col = cols.get(cnt);
           lCtx.getIndex().mergeDependency(op, outCol,
             lCtx.getIndex().getDependency(inpOp, col));
+        }
+      }
+      return null;
+    }
+
+  }
+
+  /**
+   * Processor for Unnest Join Operator.
+   */
+  public static class UnnestJoinLineage extends DefaultLineage implements NodeProcessor {
+    @Override
+    public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx procCtx,
+                          Object... nodeOutputs) throws SemanticException {
+
+      // Assert that there is at least one item in the stack. This should never
+      // be called for leafs.
+      assert(!stack.isEmpty());
+
+      // LineageCtx
+      LineageCtx lCtx = (LineageCtx) procCtx;
+      UnnestJoinOperator op = (UnnestJoinOperator)nd;
+      boolean isUdtfPath = true;
+      Operator<? extends OperatorDesc> inpOp = getParent(stack);
+      ArrayList<ColumnInfo> cols = inpOp.getSchema().getSignature();
+      lCtx.getIndex().copyPredicates(inpOp, op);
+
+      if (inpOp.equals(op.getParentOperators().get(0))) {
+        isUdtfPath = false;
+      }
+
+      // Dirty hack!!
+      // For the select path the columns are the ones at the beginning of the
+      // current operators schema and for the udtf path the columns are
+      // at the end of the operator schema.
+      ArrayList<ColumnInfo> out_cols = op.getSchema().getSignature();
+      int out_cols_size = out_cols.size();
+      int cols_size = cols.size();
+      int outColOffset = isUdtfPath ? out_cols_size - cols_size : 0;
+      for (int cnt = 0; cnt < cols_size; cnt++) {
+        ColumnInfo outCol = out_cols.get(outColOffset + cnt);
+        if (!outCol.isHiddenVirtualCol()) {
+          ColumnInfo col = cols.get(cnt);
+          lCtx.getIndex().mergeDependency(op, outCol,
+                  lCtx.getIndex().getDependency(inpOp, col));
         }
       }
       return null;
@@ -701,6 +732,10 @@ public class OpProcFactory {
 
   public static NodeProcessor getLateralViewJoinProc() {
     return new LateralViewJoinLineage();
+  }
+
+  public static NodeProcessor getUnnestJoinProc() {
+    return new UnnestJoinLineage();
   }
 
   public static NodeProcessor getTSProc() {

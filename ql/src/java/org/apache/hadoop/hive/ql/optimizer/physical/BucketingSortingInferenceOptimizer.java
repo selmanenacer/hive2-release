@@ -33,6 +33,8 @@ import org.apache.hadoop.hive.ql.exec.LateralViewJoinOperator;
 import org.apache.hadoop.hive.ql.exec.LimitOperator;
 import org.apache.hadoop.hive.ql.exec.Operator;
 import org.apache.hadoop.hive.ql.exec.SelectOperator;
+import org.apache.hadoop.hive.ql.exec.UnnestForwardOperator;
+import org.apache.hadoop.hive.ql.exec.UnnestJoinOperator;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.exec.mr.ExecDriver;
 import org.apache.hadoop.hive.ql.lib.DefaultRuleDispatcher;
@@ -119,6 +121,10 @@ public class BucketingSortingInferenceOptimizer implements PhysicalPlanResolver 
           BucketingSortingOpProcFactory.getLateralViewForwardProc());
       opRules.put(new RuleRegExp("R10", LateralViewJoinOperator.getOperatorName() + "%"),
           BucketingSortingOpProcFactory.getLateralViewJoinProc());
+      opRules.put(new RuleRegExp("R13", UnnestForwardOperator.getOperatorName() + "%"),
+              BucketingSortingOpProcFactory.getUnnestForwardProc());
+      opRules.put(new RuleRegExp("R14", UnnestJoinOperator.getOperatorName() + "%"),
+              BucketingSortingOpProcFactory.getUnnestJoinProc());
       // Matches only ForwardOperators which are preceded by some other operator in the tree,
       // in particular it can't be a reducer (and hence cannot be one of the ForwardOperators
       // added by the multi group by optimization)

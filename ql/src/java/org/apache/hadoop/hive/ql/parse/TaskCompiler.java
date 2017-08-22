@@ -483,7 +483,7 @@ public abstract class TaskCompiler {
   public ParseContext getParseContext(ParseContext pCtx, List<Task<? extends Serializable>> rootTasks) {
     ParseContext clone = new ParseContext(queryState,
         pCtx.getOpToPartPruner(), pCtx.getOpToPartList(), pCtx.getTopOps(),
-        pCtx.getJoinOps(), pCtx.getSmbMapJoinOps(),
+        pCtx.getJoinOps(), pCtx.getUnnestJoinOps(), pCtx.getSmbMapJoinOps(),
         pCtx.getLoadTableWork(), pCtx.getLoadFileWork(), pCtx.getColumnStatsAutoGatherContexts(), pCtx.getContext(),
         pCtx.getIdToTableNameMap(), pCtx.getDestTableId(), pCtx.getUCtx(),
         pCtx.getListMapJoinOpsNoReducer(),

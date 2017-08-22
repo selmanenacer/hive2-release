@@ -21,19 +21,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import org.apache.hadoop.hive.ql.exec.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.apache.hadoop.hive.ql.exec.CommonJoinOperator;
-import org.apache.hadoop.hive.ql.exec.FilterOperator;
-import org.apache.hadoop.hive.ql.exec.LateralViewForwardOperator;
-import org.apache.hadoop.hive.ql.exec.LateralViewJoinOperator;
-import org.apache.hadoop.hive.ql.exec.LimitOperator;
-import org.apache.hadoop.hive.ql.exec.Operator;
-import org.apache.hadoop.hive.ql.exec.PTFOperator;
-import org.apache.hadoop.hive.ql.exec.ReduceSinkOperator;
-import org.apache.hadoop.hive.ql.exec.ScriptOperator;
-import org.apache.hadoop.hive.ql.exec.TableScanOperator;
-import org.apache.hadoop.hive.ql.exec.UDTFOperator;
 import org.apache.hadoop.hive.ql.lib.DefaultGraphWalker;
 import org.apache.hadoop.hive.ql.lib.DefaultRuleDispatcher;
 import org.apache.hadoop.hive.ql.lib.Dispatcher;
@@ -122,6 +112,12 @@ public class PredicatePushDown extends Transform {
     opRules.put(new RuleRegExp("R10",
         ReduceSinkOperator.getOperatorName() + "%"),
         OpProcFactory.getRSProc());
+    opRules.put(new RuleRegExp("R11",
+                    UnnestForwardOperator.getOperatorName() + "%"),
+            OpProcFactory.getUFProc());
+    opRules.put(new RuleRegExp("R12",
+                    UnnestJoinOperator.getOperatorName() + "%"),
+            OpProcFactory.getUJProc());
 
     // The dispatcher fires the processor corresponding to the closest matching
     // rule and passes the context along

@@ -18,21 +18,9 @@
 
 package org.apache.hadoop.hive.ql.optimizer;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
-import org.apache.hadoop.hive.ql.exec.ColumnInfo;
-import org.apache.hadoop.hive.ql.exec.CommonJoinOperator;
-import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
-import org.apache.hadoop.hive.ql.exec.FilterOperator;
-import org.apache.hadoop.hive.ql.exec.Operator;
-import org.apache.hadoop.hive.ql.exec.OperatorFactory;
-import org.apache.hadoop.hive.ql.exec.RowSchema;
-import org.apache.hadoop.hive.ql.exec.SelectOperator;
-import org.apache.hadoop.hive.ql.exec.UnionOperator;
-import org.apache.hadoop.hive.ql.exec.Utilities;
+import org.apache.hadoop.hive.ql.exec.*;
 import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
 import org.apache.hadoop.hive.ql.parse.ParseContext;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
@@ -247,6 +235,44 @@ public class ColumnPrunerProcCtx implements NodeProcessorCtx {
     for (String col : colList) {
       if (rs.getColumnInfo(col) != null) {
         columns.add(col);
+      }
+    }
+    return columns;
+  }
+
+  /**
+   * Create the list of internal columns for select tag of Unnest
+   */
+  public List<String> getSelectColsFromUnnestJoin(SelectOperator sel,
+                                                  List<String> colList) throws SemanticException {
+    RowSchema rs = sel.getSchema();
+    List<String> columns = new ArrayList<String>();
+    for (String col : colList) {
+      if (rs.getColumnInfo(col) != null) {
+        columns.add(col);
+      }
+    }
+    // add columns from unnest join keys(only right side)
+    UnnestJoinOperator op = (UnnestJoinOperator) sel.getChildOperators().get(0);
+    Map<String, ExprNodeDesc> colExprMap = op.getColumnExprMap();
+    ExprNodeDesc[][] unnestKeys = op.getConf().getUnnestKeys();
+    for (int i=0; i<1; i++){
+      for(int j=0; j<unnestKeys[i].length; j++){
+        ExprNodeColumnDesc expr = (ExprNodeColumnDesc) unnestKeys[i][j];
+        String val1 = expr.toString();
+        Iterator<Map.Entry<String, ExprNodeDesc>> iters = colExprMap.entrySet().iterator();
+        Boolean notFound = true;
+        while (iters.hasNext() && notFound) {
+          Map.Entry<String, ExprNodeDesc> entry = iters.next();
+          String val2 = entry.getValue().toString();
+          String key = entry.getKey();
+          if(val1.equals(val2) && key.startsWith("_col")){
+            notFound = false;
+            if(!(columns.contains(key))){
+              columns.add(key);
+            }
+          }
+        }
       }
     }
     return columns;

@@ -27,8 +27,8 @@ package org.apache.hadoop.hive.ql;
  * during parsing and may be useful for categorizing a query type
  *
  * These include whether the query contains:
- * a join clause, a group by clause, an order by clause, a sort by
- * clause, a group by clause following a join clause, and whether
+ * a join clause, an unnest clause, a group by clause, an order by clause, a sort by
+ * clause, a group by clause following a join clause or an unnest clause, and whether
  * the query uses a script for mapping/reducing
  */
 public class QueryProperties {
@@ -47,6 +47,7 @@ public class QueryProperties {
   boolean hasOuterOrderBy = false;
   boolean hasSortBy = false;
   boolean hasJoinFollowedByGroupBy = false;
+  boolean hasUnnestFollowedByGroupBy = false;
   boolean hasPTF = false;
   boolean hasWindowing = false;
 
@@ -60,7 +61,10 @@ public class QueryProperties {
 
   private int noOfJoins = 0;
   private int noOfOuterJoins = 0;
+  private int noOfUnnests = 0;
+  private int noOfOuterUnnests = 0;
   private boolean hasLateralViews;
+  private boolean hasUnnests;
 
   private boolean multiDestQuery;
   private boolean filterWithSubQuery;
@@ -140,12 +144,38 @@ public class QueryProperties {
     return noOfOuterJoins;
   }
 
+  public boolean hasUnnest() {
+    return (noOfUnnests > 0);
+  }
+
+  public void incrementUnnestCount(boolean outerUnnest) {
+    noOfUnnests++;
+    if (outerUnnest)
+      noOfOuterUnnests++;
+  }
+
+  public int getUnnestCount() {
+    return noOfUnnests;
+  }
+
+  public int getOuterUnnestCount() {
+    return noOfOuterUnnests;
+  }
+
   public void setHasLateralViews(boolean hasLateralViews) {
     this.hasLateralViews = hasLateralViews;
   }
 
   public boolean hasLateralViews() {
     return hasLateralViews;
+  }
+
+  public void setHasUnnests(boolean hasUnnests) {
+    this.hasUnnests = hasUnnests;
+  }
+
+  public boolean hasUnnests() {
+    return hasUnnests;
   }
 
   public boolean hasGroupBy() {
@@ -186,6 +216,14 @@ public class QueryProperties {
 
   public void setHasJoinFollowedByGroupBy(boolean hasJoinFollowedByGroupBy) {
     this.hasJoinFollowedByGroupBy = hasJoinFollowedByGroupBy;
+  }
+
+  public boolean hasUnnestFollowedByGroupBy() {
+    return hasUnnestFollowedByGroupBy;
+  }
+
+  public void setHasUnnestFollowedByGroupBy(boolean hasUnnestFollowedByGroupBy) {
+    this.hasUnnestFollowedByGroupBy = hasUnnestFollowedByGroupBy;
   }
 
   public boolean usesScript() {
@@ -275,6 +313,7 @@ public class QueryProperties {
     hasOuterOrderBy = false;
     hasSortBy = false;
     hasJoinFollowedByGroupBy = false;
+    hasUnnestFollowedByGroupBy = false;
     hasPTF = false;
     hasWindowing = false;
 
@@ -288,6 +327,8 @@ public class QueryProperties {
 
     noOfJoins = 0;
     noOfOuterJoins = 0;
+    noOfUnnests = 0;
+    noOfOuterUnnests = 0;
 
     multiDestQuery = false;
     filterWithSubQuery = false;

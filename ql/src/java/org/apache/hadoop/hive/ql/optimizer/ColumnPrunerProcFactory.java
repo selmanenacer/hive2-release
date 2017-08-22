@@ -28,27 +28,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Stack;
 
+import org.apache.hadoop.hive.ql.exec.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.apache.hadoop.hive.ql.exec.AbstractMapJoinOperator;
-import org.apache.hadoop.hive.ql.exec.ColumnInfo;
-import org.apache.hadoop.hive.ql.exec.CommonJoinOperator;
-import org.apache.hadoop.hive.ql.exec.FilterOperator;
-import org.apache.hadoop.hive.ql.exec.GroupByOperator;
-import org.apache.hadoop.hive.ql.exec.JoinOperator;
-import org.apache.hadoop.hive.ql.exec.LateralViewForwardOperator;
-import org.apache.hadoop.hive.ql.exec.LateralViewJoinOperator;
-import org.apache.hadoop.hive.ql.exec.LimitOperator;
-import org.apache.hadoop.hive.ql.exec.Operator;
-import org.apache.hadoop.hive.ql.exec.OperatorFactory;
-import org.apache.hadoop.hive.ql.exec.PTFOperator;
-import org.apache.hadoop.hive.ql.exec.ReduceSinkOperator;
-import org.apache.hadoop.hive.ql.exec.RowSchema;
-import org.apache.hadoop.hive.ql.exec.SelectOperator;
-import org.apache.hadoop.hive.ql.exec.TableScanOperator;
-import org.apache.hadoop.hive.ql.exec.UDTFOperator;
-import org.apache.hadoop.hive.ql.exec.UnionOperator;
-import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.lib.Node;
 import org.apache.hadoop.hive.ql.lib.NodeProcessor;
 import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
@@ -742,16 +724,28 @@ public final class ColumnPrunerProcFactory {
                 .put(op, cppCtx.getColsFromSelectExpr(op));
             return null;
           }
+          // UNNEST is not handled yet, so the right parent SelectOp of UNNEST should just assume all columns.
+          if (child instanceof UnnestJoinOperator &&
+                  child.getParentOperators().get(1).equals(op)) {
+            cppCtx.getPrunedColLists()
+                    .put(op, cppCtx.getColsFromSelectExpr(op));
+            return null;
+          }
         }
       }
 
       LateralViewJoinOperator lvJoin = null;
+      UnnestJoinOperator unnestJoin = null;
       if (op.getConf().isSelStarNoCompute()) {
         assert op.getNumChild() == 1;
         Operator<? extends OperatorDesc> child = op.getChildOperators().get(0);
         if (child instanceof LateralViewJoinOperator) { // this SEL is SEL(*)
                                                         // for LV
           lvJoin = (LateralViewJoinOperator) child;
+        }
+        if (child instanceof UnnestJoinOperator) { // this SEL is SEL(*)
+          // for Unnest
+          unnestJoin = (UnnestJoinOperator) child;
         }
       }
 
@@ -765,6 +759,15 @@ public final class ColumnPrunerProcFactory {
           RowSchema rs = op.getSchema();
           cppCtx.getPrunedColLists().put(op,
               cppCtx.getSelectColsFromLVJoin(rs, cols));
+        }
+        return null;
+      }
+
+      if (unnestJoin != null) {
+        // get columns for SEL(*) from UJ
+        if (cols != null) {
+          cppCtx.getPrunedColLists().put(op,
+                  cppCtx.getSelectColsFromUnnestJoin(op, cols));
         }
         return null;
       }
@@ -940,6 +943,14 @@ public final class ColumnPrunerProcFactory {
 
   public static ColumnPrunerLateralViewForwardProc getLateralViewForwardProc() {
     return new ColumnPrunerLateralViewForwardProc();
+  }
+
+  public static ColumnPrunerUnnestJoinProc getUnnestJoinProc() {
+    return new ColumnPrunerUnnestJoinProc();
+  }
+
+  public static ColumnPrunerUnnestForwardProc getUnnestForwardProc() {
+    return new ColumnPrunerUnnestForwardProc();
   }
 
   /**
@@ -1197,6 +1208,122 @@ public final class ColumnPrunerProcFactory {
    */
   public static ColumnPrunerMapJoinProc getMapJoinProc() {
     return new ColumnPrunerMapJoinProc();
+  }
+
+  /**
+   * The Node Processor for Column Pruning on unnest Join Operators.
+   */
+  public static class ColumnPrunerUnnestJoinProc implements NodeProcessor {
+    @Override
+    public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx ctx,
+                          Object... nodeOutputs) throws SemanticException {
+      UnnestJoinOperator op = (UnnestJoinOperator) nd;
+      ColumnPrunerProcCtx cppCtx = (ColumnPrunerProcCtx) ctx;
+      List<String> cols = cppCtx.genColLists(op);
+      if (cols == null) {
+        return null;
+      }
+
+      Map<String, ExprNodeDesc> colExprMap = op.getColumnExprMap();
+      // As columns go down the DAG, the UJ will transform internal column
+      // names from something like 'key' to '_col0'. Because of this, we need
+      // to undo this transformation using the column expression map as the
+      // column names propagate up the DAG.
+
+      // this is SEL(*) cols + UDTF cols
+      List<String> outputCols = op.getConf().getOutputInternalColNames();
+
+      // cause we cannot prune columns from UDTF branch currently, extract
+      // columns from SEL(*) branch only and append all columns from UDTF branch to it
+      int numSelColumns = op.getConf().getNumSelColumns();
+
+      List<String> colsAfterReplacement = new ArrayList<String>();
+      ArrayList<String> newColNames = new ArrayList<String>();
+      for (String col : cols) {
+        int index = outputCols.indexOf(col);
+        // colExprMap.size() == size of cols from SEL(*) branch
+        if (index >= 0 && index < numSelColumns) {
+          ExprNodeDesc transformed = colExprMap.get(col);
+          Utilities.mergeUniqElems(colsAfterReplacement, transformed.getCols());
+          newColNames.add(col);
+        }
+      }
+
+      // add columns from unnest join keys(only right side)
+      ExprNodeDesc[][] unnestKeys = op.getConf().getUnnestKeys();
+      for (int i=0; i<1; i++){
+        for(int j=0; j<unnestKeys[i].length; j++){
+          ExprNodeColumnDesc expr = (ExprNodeColumnDesc) unnestKeys[i][j];
+          String val1 = expr.toString();
+          Iterator<Map.Entry<String, ExprNodeDesc>> iters = colExprMap.entrySet().iterator();
+          Boolean notFound = true;
+          while (iters.hasNext() && notFound) {
+            Map.Entry<String, ExprNodeDesc> entry = iters.next();
+            String val2 = entry.getValue().toString();
+            String key = entry.getKey();
+            if(val1.equals(val2) && key.startsWith("_col")){
+              notFound = false;
+              if(!(newColNames.contains(key))){
+                newColNames.add(key);
+              }
+            }
+          }
+        }
+      }
+
+      // update number of columns from sel(*)
+      op.getConf().setNumSelColumns(newColNames.size());
+
+      // add all UDTF columns
+      // following SEL will do CP for columns from UDTF, not adding SEL in here
+      newColNames.addAll(outputCols.subList(numSelColumns, outputCols.size()));
+      op.getConf().setOutputInternalColNames(newColNames);
+      pruneOperator(ctx, op, newColNames);
+      cppCtx.getPrunedColLists().put(op, colsAfterReplacement);
+      return null;
+    }
+  }
+
+  /**
+   * The Node Processor for Column Pruning on Unnest Forward Operators.
+   */
+  public static class ColumnPrunerUnnestForwardProc extends ColumnPrunerDefaultProc {
+    @Override
+    public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx ctx,
+                          Object... nodeOutputs) throws SemanticException {
+      super.process(nd, stack, ctx, nodeOutputs);
+      UnnestForwardOperator op = (UnnestForwardOperator) nd;
+      ColumnPrunerProcCtx cppCtx = (ColumnPrunerProcCtx) ctx;
+
+      // get the SEL(*) branch
+      Operator<?> select = op.getChildOperators().get(UnnestJoinOperator.SELECT_TAG);
+
+      // Update the info of SEL operator based on the pruned reordered columns
+      // these are from ColumnPrunerSelectProc
+      List<String> cols = cppCtx.getPrunedColList(select);
+      RowSchema rs = op.getSchema();
+      ArrayList<ExprNodeDesc> colList = new ArrayList<ExprNodeDesc>();
+      ArrayList<String> outputColNames = new ArrayList<String>();
+      for (String col : cols) {
+        // revert output cols of SEL(*) to ExprNodeColumnDesc
+        ColumnInfo colInfo = rs.getColumnInfo(col);
+        ExprNodeColumnDesc colExpr = new ExprNodeColumnDesc(colInfo);
+        colList.add(colExpr);
+        outputColNames.add(col);
+      }
+      // replace SEL(*) to SEL(exprs)
+      ((SelectDesc)select.getConf()).setSelStarNoCompute(false);
+      ((SelectDesc)select.getConf()).setColList(colList);
+      ((SelectDesc)select.getConf()).setOutputColumnNames(outputColNames);
+      pruneOperator(ctx, select, outputColNames);
+
+      Operator<?> udtfPath = op.getChildOperators().get(UnnestJoinOperator.UDTF_TAG);
+      List<String> lvFCols = new ArrayList<String>(cppCtx.getPrunedColLists().get(udtfPath));
+      lvFCols = Utilities.mergeUniqElems(lvFCols, outputColNames);
+      pruneOperator(ctx, op, lvFCols);
+
+      return null;
+    }
   }
 
 }

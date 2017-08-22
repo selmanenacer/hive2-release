@@ -747,7 +747,7 @@ public class CalcitePlanner extends SemanticAnalyzer {
 
     if (!queryProperties.hasClusterBy() && !queryProperties.hasDistributeBy()
         && !queryProperties.hasSortBy() && !queryProperties.hasPTF() && !queryProperties.usesScript()
-        && !queryProperties.hasLateralViews()) {
+        && !queryProperties.hasLateralViews() && !queryProperties.hasUnnests()) {
       // Ok to run CBO.
       return null;
     }
@@ -767,6 +767,8 @@ public class CalcitePlanner extends SemanticAnalyzer {
         msg += "uses scripts; ";
       if (queryProperties.hasLateralViews())
         msg += "has lateral views; ";
+      if (queryProperties.hasUnnests())
+        msg += "has unnests; ";
 
       if (msg.isEmpty())
         msg += "has some unspecified limitations; ";
